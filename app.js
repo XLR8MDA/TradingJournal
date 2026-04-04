@@ -159,30 +159,41 @@ function updateMiniScore(ctx) {
   const all     = [...items];
   const checked = all.filter(i => i.classList.contains('checked')).length;
 
-  // Gate logic: P1=items 0-2 (all), P2=3-5 (any), P3=6-11 (any), P4=12-15 (all)
+  // TN checklist: 11 items — P1[0-2] P2[3-5] P3[6] P4[7-10]
+  // BH checklist: 16 items — original layout unchanged
+  const isTn  = ctx === 'tn';
+  const total = isTn ? 11 : 16;
+
   const p1 = [0,1,2].every(i => all[i]?.classList.contains('checked'));
   const p2 = [3,4,5].some(i  => all[i]?.classList.contains('checked'));
-  const p3 = [6,7,8,9,10,11].some(i => all[i]?.classList.contains('checked'));
-  const p4 = [12,13,14,15].every(i  => all[i]?.classList.contains('checked'));
+  const p3 = isTn
+    ? !!all[6]?.classList.contains('checked')
+    : [6,7,8,9,10,11].some(i => all[i]?.classList.contains('checked'));
+  const p4 = isTn
+    ? [7,8,9,10].every(i => all[i]?.classList.contains('checked'))
+    : [12,13,14,15].every(i => all[i]?.classList.contains('checked'));
 
   const fill    = document.getElementById(ctx + '-score-fill');
   const num     = document.getElementById(ctx + '-score-num');
   const verdict = document.getElementById(ctx + '-score-verdict');
 
-  if (fill) fill.style.width = Math.round(checked / 16 * 100) + '%';
+  if (fill) fill.style.width = Math.round(checked / total * 100) + '%';
+
+  const goThresh  = isTn ? 9  : 12;
+  const mrgThresh = isTn ? 7  : 10;
 
   let color, text;
-  if (checked >= 12 && p1 && p2 && p3 && p4) {
+  if (checked >= goThresh && p1 && p2 && p3 && p4) {
     color = 'var(--green)'; text = 'All gates passed — ready to trade';
     if (fill) fill.style.background = 'var(--green2)';
-  } else if (checked >= 10 && p1 && p2 && p3) {
+  } else if (checked >= mrgThresh && p1 && p2 && p3) {
     color = 'var(--amber)'; text = 'Marginal — reduce size to 0.5%';
     if (fill) fill.style.background = 'var(--amber2)';
   } else {
-    color = 'var(--red)'; text = checked < 10 ? 'Not ready — keep marking' : 'Gate failed — check phases';
+    color = 'var(--red)'; text = 'Gate failed — check phases';
     if (fill) fill.style.background = 'var(--red2)';
   }
-  if (num)     { num.textContent = checked + '/16'; num.style.color = color; }
+  if (num)     { num.textContent = checked + '/' + total; num.style.color = color; }
   if (verdict) { verdict.textContent = text; verdict.style.color = color; }
 
   // Sync hidden score input (Backtest uses it for save)
@@ -846,61 +857,69 @@ function handleBhFile(file) {
 
 // ── TRADE NOW — 3-STEP CONVERSATIONAL FLOW ───────────
 
-const TN_SYSTEM = `You are EDGE AI, a strict pre-trade analyst for the Stop Hunt + Pattern Confluence strategy.
+const TN_SYSTEM = `You are EDGE, a sharp trading mentor for the Stop Hunt + Pattern Confluence strategy. Your job is NOT to evaluate the chart for the trader — it is to make the trader think. You ask first. You challenge. You confirm or correct only after the trader has stated their read. You are direct, concise, and never condescending.
 
-ASSESSMENT PROTOCOL — one phase at a time, never batch all phases in one message:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+OPENING — when the trader uploads their first chart:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Do NOT start assessing immediately.
+First, ask the trader ONE question: "Walk me through what you see — where's your level and why are you looking at it?"
+Wait for their answer before you evaluate anything.
 
-━━ STEP 1: Assess P1 (Location) on the first chart ━━
-Check these 3 gates on the chart provided:
-  [a] Is price within 10–15 pips of a clearly defined S/R level?
-  [b] Has that S/R level been confirmed by 2+ prior touches?
-  [c] Does the higher timeframe structure agree with this level?
-After assessing P1, emit this JSON on its own line:
-{"phase":"p1","p1":[a,b,c]}
-Then:
-  → If ALL 3 pass: ask for the entry timeframe chart (15M preferred, or 5M) if not yet uploaded
-  → If ANY fail: tell the user P1 failed, explain why, and stop (no final verdict needed yet)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE FLOW — one phase per message, always ask first:
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-━━ STEP 2: Assess P2 (Stop Hunt) on the entry TF chart ━━
-Check for at least ONE of:
-  [a] Wick hunt — candle wick spiked beyond S/R, closed back inside
-  [b] Full candle hunt — candle closed beyond S/R, next closed back inside
-  [c] Fake breakout — 2–4 candles pushed beyond S/R with no follow-through
-After assessing P2, emit:
-{"phase":"p2","p2":[a,b,c]}
-Then:
-  → If ANY 1 passes: move to P3
-  → If ALL fail: tell the user no stop hunt is visible, ask them to wait or check a different level
+P1 — LOCATION
+Ask: "How many times has price touched that level? Does your higher TF agree with it?"
+Listen to their answer. Then give your honest read of the chart — agree, challenge, or correct.
+If P1 is valid, emit: {"phase":"p1","p1":[SR_within_range, confirmed_2plus_touches, HTF_agrees]}
+If P1 fails, say clearly why and ask: "Do you want to find a better level or wait for this one to reset?"
 
-━━ STEP 3: Assess P3 (Pattern) on the same entry TF chart ━━
-Check for at least ONE of:
-  [a] Pin bar / hammer / shooting star
-  [b] Bullish or bearish engulfing candle
-  [c] Inside bar coiled at the level
-  [d] Double top / bottom with stop hunt
-  [e] S/R flip retest
-  [f] Bull / bear flag continuation
-After assessing P3, emit:
-{"phase":"p3","p3":[a,b,c,d,e,f]}
-Then move to P4.
+P2 — STOP HUNT
+Ask: "Do you see a stop hunt on this level? What type — wick, full candle, or fake break?"
+Let them identify it first. Then confirm or challenge based on what you see.
+A valid stop hunt: wick or candle body spiked THROUGH the level and CLOSED BACK inside.
+Emit: {"phase":"p2","p2":[wick_hunt, full_candle_hunt, fake_breakout]}
+If no hunt is visible: "I don't see a confirmed stop hunt yet. Price hasn't been through the level. Worth waiting."
 
-━━ STEP 4: Assess P4 (Session & Risk) ━━
-  [a] No high-impact news within 30 min — ask the user if uncertain
-  [b] London or NY session timing — you can determine this from chart timestamps
-  [c] R:R ratio >= 1:2 — ask the user: "What is your planned entry, SL, and TP?"
-  [d] Fewer than 2 losses today — ask the user
-After you have answers, emit:
-{"phase":"p4","p4":[a,b,c,d]}
+P3 — PATTERN
+Ask: "What confirmation pattern do you see forming? Name it and tell me where your entry would be."
+One pattern is all that's needed. The trader names it — you validate it.
+Valid patterns: pin bar, engulfing, inside bar, double top/bottom, S/R flip retest, flag.
+Emit: {"phase":"p3","p3":[true]} if any valid pattern is confirmed, {"phase":"p3","p3":[false]} if not.
+Also note the pattern name in your message (e.g. "That's a clean bearish engulfing — confirmed.").
 
-━━ FINAL VERDICT ━━
-Only after all 4 phases are assessed, end your final message with this JSON on its own line:
-{"verdict":"GO","score":14,"direction":"long","sl":"66400","rr":"1:2.5","p1":[true,true,true],"p2":[false,true,false],"p3":[false,true,false,false,false,false],"p4":[true,true,true,false],"summary":"Clean P1+P2+P3 confluence at 66,412. NY session, R:R 1:2.5."}
+P4 — SESSION & RISK
+Ask these two questions together: "Any news in the next 30 minutes? And what's your entry, SL, and TP?"
+Calculate R:R yourself from their numbers. Check session from chart timestamps.
+Emit: {"phase":"p4","p4":[no_news, london_or_ny_session, rr_gte_1_2, under_2_losses_today]}
+For losses today — ask: "How many losses have you taken today?"
 
-RULES:
-- Keep each message focused on ONE phase only
-- Do not jump ahead or summarise all phases in the first message
-- The user's bias is informational only — your assessment is independent
-- Be concise — 3–5 sentences per phase, then the JSON, then your next question`;
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FINAL VERDICT — only after all 4 phases complete
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Frame it as YOUR assessment + the trader's final call.
+End with: "P1 ✓ P2 ✓ P3 ✓ P4 ✓ — setup is valid. You've done the work. Your call."
+Or: "P2 is not confirmed. Don't force it — a setup without a stop hunt is just a breakout trade, not EDGE."
+
+Emit this JSON on its own line (score = number of true values across all phases, max 13):
+{"verdict":"GO","score":12,"direction":"long","sl":"2312.00","rr":"1:2.8","p1":[true,true,true],"p2":[true,false,false],"p3":[true],"p4":[true,true,true,true],"summary":"Strong level, clean wick hunt, pin bar entry confirmed. NY open, R:R 1:2.8."}
+
+Verdict values: "GO" = all phases pass | "MARGINAL" = 1 phase weak but tradeable | "STOP" = fundamental phase missing
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+COACHING RULES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+- Ask before you tell. Always.
+- Never give the verdict before the trader has answered P1 through P4.
+- If the trader skips a phase or says "looks good" without substance, push back: "What specifically looks good? Where's your level?"
+- Keep messages short — max 4 sentences + JSON + next question.
+- If the trader seems uncertain or is forcing a trade, say so plainly: "This looks like you want this trade, not that the setup is there."
+- Never say "Great!" or "Good job" — only give specific, honest feedback.
+- The trader decides. You inform. Never say "you should take this trade."
+- After verdict, if GO/MARGINAL, ask: "What's your invalidation? If price does what, are you wrong?"`;
+
 
 let tnState = {
   pair: '', tf: '', session: '', bias: 'none',
@@ -1032,6 +1051,11 @@ function handleTnAttach(inputEl, fileOverride) {
     document.getElementById('tn-ctx-charts').textContent = tnState.charts.length;
     addTnThumb(dataUrl, 'Chart ' + idx);
     appendTnMsgImage(dataUrl);
+    // In voice mode, confirm chart received audibly
+    if (isVoiceModeEnabled('tn-chat-input')) {
+      setVoiceTranscript('Chart ' + idx + ' attached');
+      setVoiceStatus('Thinking…', 'thinking');
+    }
     tnState.history.push({ role: 'user', content: [
       { type: 'text', text: 'Here is chart ' + idx + '. Please continue your analysis.' },
       { type: 'image_url', image_url: { url: dataUrl } }
@@ -1048,6 +1072,7 @@ function sendTnMsg() {
   const input = document.getElementById('tn-chat-input');
   if (!input || !input.value.trim()) return;
   const msg = input.value.trim();
+  if (activeRecognition && activeSpeechButton?.id === 'tn-mic-btn') stopSpeechInput();
   input.value = '';
   appendTnMsg('user', msg);
   tnState.history.push({ role: 'user', content: msg });
@@ -1081,25 +1106,34 @@ async function callTnGroq(callback) {
 function preTnChecklist(j) {
   const items = document.querySelectorAll('#tn-chk .mini-item');
   if (!items.length) return;
-  // Map phase arrays onto items: P1[0-2], P2[3-5], P3[6-11], P4[12-15]
+  // P1[0-2], P2[3-5], P3[6] (single item), P4[7-10]
   const flat = [
     ...(j.p1 || [false,false,false]),
     ...(j.p2 || [false,false,false]),
-    ...(j.p3 || [false,false,false,false,false,false]),
+    [!!(j.p3?.[0])],                          // P3 collapsed to 1
     ...(j.p4 || [false,false,false,false])
-  ];
-  items.forEach((el, i) => {
-    el.classList.toggle('checked', !!flat[i]);
-  });
+  ].flat();
+  items.forEach((el, i) => el.classList.toggle('checked', !!flat[i]));
+  // Update P3 label with pattern name if provided
+  if (j.p3_pattern) {
+    const lbl = document.getElementById('tn-p3-label');
+    if (lbl) lbl.textContent = j.p3_pattern;
+  }
   updateMiniScore('tn');
 }
 
 function preTnChecklistPhase(j) {
   const items = [...document.querySelectorAll('#tn-chk .mini-item')];
-  const map = { p1:[0,1,2], p2:[3,4,5], p3:[6,7,8,9,10,11], p4:[12,13,14,15] };
+  // P1→[0,1,2]  P2→[3,4,5]  P3→[6]  P4→[7,8,9,10]
+  const map = { p1:[0,1,2], p2:[3,4,5], p3:[6], p4:[7,8,9,10] };
   const key = Object.keys(j).find(k => map[k]);
   if (!key) return;
   map[key].forEach((idx, i) => items[idx]?.classList.toggle('checked', !!j[key][i]));
+  // Update P3 label if pattern name provided
+  if (key === 'p3' && j.p3_pattern) {
+    const lbl = document.getElementById('tn-p3-label');
+    if (lbl) lbl.textContent = j.p3_pattern;
+  }
   updateMiniScore('tn');
 }
 
@@ -1126,7 +1160,7 @@ function processTnVerdict(text) {
     const dirStr = j.direction ? ' · ' + j.direction.toUpperCase() : '';
     const banner = document.getElementById('tn-verdict-banner');
     banner.className = `verdict-banner ${vtype} show`;
-    banner.innerHTML = `<div class="verdict-icon">${icons[vtype]}</div><div><div>${j.verdict}${dirStr} — ${j.score}/16 · SL: ${j.sl || '—'} · R:R: ${j.rr || '—'}</div><div class="verdict-detail">${j.summary || ''}</div></div>`;
+    banner.innerHTML = `<div class="verdict-icon">${icons[vtype]}</div><div><div>${j.verdict}${dirStr} — ${j.score}/11 · SL: ${j.sl || '—'} · R:R: ${j.rr || '—'}</div><div class="verdict-detail">${j.summary || ''}</div></div>`;
     if (vtype !== 'stop') {
       const btn = document.getElementById('tn-push-btn');
       if (btn) { btn.style.display = 'inline-flex'; btn.dataset.score = j.score; btn.dataset.dir = j.direction || ''; }
@@ -1141,7 +1175,8 @@ function appendTnMsg(from, text) {
   const isAi = from === 'ai';
   const div  = document.createElement('div');
   div.className = 'ai-msg' + (isAi ? '' : ' user');
-  div.innerHTML = `<div class="ai-avatar">${isAi ? 'AI' : 'ME'}</div><div class="ai-bubble">${renderAiMessage(text)}</div>`;
+  div.innerHTML = `<div class="ai-avatar">${isAi ? 'AI' : 'ME'}</div><div class="ai-msg-body"><div class="ai-bubble">${renderAiMessage(text)}</div></div>`;
+  maybeAutoSpeakReply(text, isAi, 'tn-chat-input');
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
 }
@@ -1181,6 +1216,7 @@ function resetTnFlow() {
   const msgs   = document.getElementById('tn-ai-msgs');  if (msgs) msgs.innerHTML = '';
   const banner = document.getElementById('tn-verdict-banner'); if (banner) banner.className = 'verdict-banner';
   document.querySelectorAll('#tn-chk .mini-item').forEach(i => i.classList.remove('checked'));
+  const p3lbl = document.getElementById('tn-p3-label'); if (p3lbl) p3lbl.textContent = 'Pattern confirmed';
   updateMiniScore('tn');
   const push   = document.getElementById('tn-push-btn'); if (push) push.style.display = 'none';
   window.scrollTo(0, 0);
@@ -1259,7 +1295,8 @@ function appendAiMsg(from, text) {
   div.className = 'ai-msg' + (isAi ? '' : ' user');
   div.innerHTML = `
     <div class="ai-avatar">${isAi ? 'AI' : 'ME'}</div>
-    <div class="ai-bubble">${renderAiMessage(text)}</div>`;
+    <div class="ai-msg-body"><div class="ai-bubble">${renderAiMessage(text)}</div></div>`;
+  maybeAutoSpeakReply(text, isAi, 'ai-chat-input');
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
   // Show red badge on toggle tab when drawer is closed and AI replies
@@ -1276,6 +1313,11 @@ function renderAiMessage(text) {
   if (!text) return '';
   if (/<\/?[a-z][\s\S]*>/i.test(text)) return text;
   return renderMarkdown(text);
+}
+
+function maybeAutoSpeakReply(rawText, isAi, inputId) {
+  if (!isAi || !isVoiceModeEnabled(inputId)) return;
+  autoSpeakReply(rawText, inputId);
 }
 
 function renderMarkdown(text) {
@@ -1399,10 +1441,350 @@ function escapeHtml(text) {
     .replace(/'/g, '&#39;');
 }
 
+// ── VOICE MODE ─────────────────────────────────────────
+const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+let activeRecognition = null;
+let activeSpeechButton = null;
+let speakingButton = null;
+let pendingVoiceResumeInputId = null;
+const voiceModeState = {};
+
+// Audio visualizer state
+let tnAudioCtx = null, tnAnalyser = null, tnAudioStream = null, tnVisFrame = null;
+
+function isVoiceModeEnabled(inputId) { return !!voiceModeState[inputId]; }
+
+function setVoiceStatus(text, cls) {
+  const el = document.getElementById('tn-voice-status');
+  if (!el) return;
+  el.textContent = text;
+  el.className = 'tn-voice-status ' + (cls || '');
+}
+
+function setVoiceTranscript(text) {
+  const el = document.getElementById('tn-voice-transcript');
+  if (el) el.textContent = text || '';
+}
+
+function showTnVoiceUi(show) {
+  const ui  = document.getElementById('tn-voice-ui');
+  const bar = document.getElementById('tn-text-input-bar');
+  if (ui)  ui.classList.toggle('active', show);
+  if (bar) bar.style.display = show ? 'none' : 'flex';
+}
+
+function toggleVoiceMode(inputId, buttonEl) {
+  const enable = !isVoiceModeEnabled(inputId);
+  voiceModeState[inputId] = enable;
+  buttonEl.classList.toggle('voice-mode', enable);
+  buttonEl.title = enable ? 'Voice mode on — click to exit' : 'Voice mode';
+
+  if (!enable) {
+    stopSpeechInput();
+    window.speechSynthesis?.cancel();
+    pendingVoiceResumeInputId = null;
+    if (inputId === 'tn-chat-input') { showTnVoiceUi(false); stopTnVisualizer(); }
+    return;
+  }
+  if (!SpeechRecognitionCtor) {
+    alert('Voice mode requires Chrome or Edge.');
+    voiceModeState[inputId] = false;
+    buttonEl.classList.remove('voice-mode');
+    return;
+  }
+  if (inputId === 'tn-chat-input') {
+    showTnVoiceUi(true);
+    startTnVisualizer();
+    setVoiceStatus('Listening…', 'listening');
+    setVoiceTranscript('');
+  }
+  if (!activeRecognition) startSpeechInput(inputId, buttonEl);
+}
+
+// ── Visualizer ──────────────────────────────────────────
+async function startTnVisualizer() {
+  try {
+    tnAudioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    tnAudioCtx   = new AudioContext();
+    tnAnalyser   = tnAudioCtx.createAnalyser();
+    tnAnalyser.fftSize = 64;
+    tnAudioCtx.createMediaStreamSource(tnAudioStream).connect(tnAnalyser);
+    drawTnVisualizer();
+  } catch { /* mic denied — canvas stays dark */ }
+}
+
+function drawTnVisualizer() {
+  const canvas = document.getElementById('tn-voice-canvas');
+  if (!canvas) return;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = canvas.offsetWidth  * dpr;
+  canvas.height = canvas.offsetHeight * dpr;
+  const ctx = canvas.getContext('2d');
+  const buf = tnAnalyser ? new Uint8Array(tnAnalyser.frequencyBinCount) : new Uint8Array(16);
+
+  function frame() {
+    tnVisFrame = requestAnimationFrame(frame);
+    if (tnAnalyser) tnAnalyser.getByteFrequencyData(buf);
+    const W = canvas.width, H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+    const n = buf.length;
+    const gap = 3 * dpr;
+    const barW = (W - gap * (n - 1)) / n;
+    buf.forEach((v, i) => {
+      const ratio = v / 255;
+      const h     = Math.max(4 * dpr, ratio * H);
+      const y     = (H - h) / 2;
+      // Gradient: amber at low volume → gold/green at high
+      const hue   = 38 + ratio * 30;
+      const alpha = 0.35 + ratio * 0.65;
+      ctx.fillStyle = `hsla(${hue}, 90%, 55%, ${alpha})`;
+      const r = Math.min(barW / 2, 4 * dpr);
+      ctx.beginPath();
+      ctx.roundRect(i * (barW + gap), y, barW, h, r);
+      ctx.fill();
+    });
+  }
+  frame();
+}
+
+function stopTnVisualizer() {
+  if (tnVisFrame)   { cancelAnimationFrame(tnVisFrame); tnVisFrame = null; }
+  if (tnAnalyser)   { try { tnAnalyser.disconnect(); } catch {} tnAnalyser = null; }
+  if (tnAudioStream){ tnAudioStream.getTracks().forEach(t => t.stop()); tnAudioStream = null; }
+  if (tnAudioCtx)   { try { tnAudioCtx.close(); } catch {} tnAudioCtx = null; }
+}
+
+// ── Speech input ────────────────────────────────────────
+const SILENCE_MS = 1600; // ms of no new speech before auto-send
+
+function startSpeechInput(inputId, buttonEl) {
+  if (!SpeechRecognitionCtor) return;
+  const input = document.getElementById(inputId);
+  if (!input) return;
+
+  const recognition = new SpeechRecognitionCtor();
+  recognition.lang = 'en-US';
+  recognition.interimResults = true;
+  recognition.continuous = true; // keep session alive; we own the silence detection
+
+  let finalTranscript = '';
+  let silenceTimer    = null;
+
+  activeRecognition  = recognition;
+  activeSpeechButton = buttonEl;
+  buttonEl.classList.add('listening');
+  buttonEl.textContent = '⏹';
+
+  const doSend = () => {
+    clearTimeout(silenceTimer);
+    silenceTimer = null;
+    const val = input.value.trim();
+    // Detach handlers then stop — prevents onend restart loop
+    recognition.onresult = null;
+    recognition.onerror  = null;
+    recognition.onend    = null;
+    try { recognition.stop(); } catch {}
+    activeRecognition  = null;
+    activeSpeechButton = null;
+    buttonEl.classList.remove('listening');
+    buttonEl.textContent = '🎙';
+    if (!isVoiceModeEnabled(inputId) || !val) return;
+    if (inputId === 'tn-chat-input') {
+      setVoiceStatus('Thinking…', 'thinking');
+      setVoiceTranscript('');
+      sendTnMsg();
+    } else {
+      sendAiMsg();
+    }
+  };
+
+  recognition.onresult = event => {
+    clearTimeout(silenceTimer);
+    let interim = '';
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const t = event.results[i][0]?.transcript || '';
+      if (event.results[i].isFinal) finalTranscript += t + ' ';
+      else interim += t;
+    }
+    const display = (finalTranscript + interim).trim();
+    input.value = display;
+    if (inputId === 'tn-chat-input') setVoiceTranscript(display);
+    // Restart silence timer on every new speech
+    if (display && isVoiceModeEnabled(inputId)) {
+      silenceTimer = setTimeout(doSend, SILENCE_MS);
+    }
+  };
+
+  recognition.onerror = e => {
+    clearTimeout(silenceTimer);
+    stopSpeechInput();
+    if (isVoiceModeEnabled(inputId) && !window.speechSynthesis?.speaking) {
+      setTimeout(() => {
+        if (isVoiceModeEnabled(inputId) && !activeRecognition) startSpeechInput(inputId, buttonEl);
+      }, 400);
+    }
+  };
+
+  // onend only fires here on unexpected stop (network, browser cut-off) — not from doSend
+  recognition.onend = () => {
+    clearTimeout(silenceTimer);
+    stopSpeechInput();
+    if (isVoiceModeEnabled(inputId) && !window.speechSynthesis?.speaking) {
+      const val = input.value.trim();
+      if (val) {
+        // Got cut off mid-speech — send what we have
+        if (inputId === 'tn-chat-input') { setVoiceStatus('Thinking…', 'thinking'); setVoiceTranscript(''); sendTnMsg(); }
+        else sendAiMsg();
+      } else {
+        setTimeout(() => {
+          if (isVoiceModeEnabled(inputId) && !activeRecognition) {
+            setVoiceStatus('Listening…', 'listening');
+            startSpeechInput(inputId, buttonEl);
+          }
+        }, 350);
+      }
+    }
+  };
+
+  recognition.start();
+}
+
+function stopSpeechInput() {
+  stopInterruptListener();
+  if (activeRecognition) {
+    activeRecognition.onend = null;
+    activeRecognition.onerror = null;
+    try { activeRecognition.stop(); } catch {}
+  }
+  if (activeSpeechButton) {
+    activeSpeechButton.classList.remove('listening');
+    activeSpeechButton.textContent = '🎙';
+  }
+  activeRecognition  = null;
+  activeSpeechButton = null;
+}
+
+// ── Speech output ───────────────────────────────────────
+function stripMarkdownForSpeech(text) {
+  return String(text || '')
+    .replace(/\{[\s\S]*?\}/g, '')           // strip JSON blobs
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[*_#>━]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// ── Interrupt listener — mic running while TTS plays ───
+let interruptRecognition = null;
+
+function startInterruptListener(inputId, buttonEl) {
+  if (!SpeechRecognitionCtor || interruptRecognition || activeRecognition) return;
+  const recognition = new SpeechRecognitionCtor();
+  recognition.lang = 'en-US';
+  recognition.interimResults = true;
+  recognition.continuous = false;
+  interruptRecognition = recognition;
+
+  recognition.onresult = event => {
+    const t = event.results[0]?.[0]?.transcript?.trim() || '';
+    if (!t) return;
+    // Barge-in: kill TTS, hand off to main mic
+    stopInterruptListener();
+    window.speechSynthesis.cancel();
+    pendingVoiceResumeInputId = null;
+    const input = document.getElementById(inputId);
+    if (input) { input.value = t; }
+    if (inputId === 'tn-chat-input') { setVoiceTranscript(t); setVoiceStatus('Listening…', 'listening'); }
+    startSpeechInput(inputId, buttonEl);
+  };
+  recognition.onerror = () => stopInterruptListener();
+  recognition.onend   = () => { if (interruptRecognition === recognition) interruptRecognition = null; };
+  try { recognition.start(); } catch {}
+}
+
+function stopInterruptListener() {
+  if (!interruptRecognition) return;
+  const r = interruptRecognition;
+  interruptRecognition = null;
+  r.onresult = r.onerror = r.onend = null;
+  try { r.stop(); } catch {}
+}
+
+function autoSpeakReply(text, inputId) {
+  if (!('speechSynthesis' in window)) return;
+  const clean = stripMarkdownForSpeech(text);
+  if (!clean || /^(Analysing|Analyzing|Thinking)/.test(clean)) return;
+
+  window.speechSynthesis.cancel();
+  stopInterruptListener();
+  setVoiceStatus('Speaking…', 'speaking');
+  setVoiceTranscript('');
+
+  const buttonId = inputId === 'tn-chat-input' ? 'tn-mic-btn' : 'ai-mic-btn';
+  const buttonEl = document.getElementById(buttonId);
+
+  pendingVoiceResumeInputId = isVoiceModeEnabled(inputId) ? inputId : null;
+  const utt = new SpeechSynthesisUtterance(clean);
+  utt.rate  = 1.05;
+  utt.pitch = 1;
+
+  utt.onstart = () => {
+    // Start interrupt listener as soon as TTS begins playing
+    if (isVoiceModeEnabled(inputId) && buttonEl) startInterruptListener(inputId, buttonEl);
+  };
+  utt.onend = utt.onerror = () => {
+    stopInterruptListener();
+    setVoiceStatus('Listening…', 'listening');
+    maybeResumeVoiceMode();
+  };
+  window.speechSynthesis.speak(utt);
+}
+
+function toggleSpeechOutput(buttonEl, text, inputId) {
+  if (!('speechSynthesis' in window)) { alert('TTS not available.'); return; }
+  if (window.speechSynthesis.speaking) {
+    window.speechSynthesis.cancel();
+    if (speakingButton) { speakingButton.classList.remove('speaking'); speakingButton.textContent = '🔊'; }
+    if (speakingButton === buttonEl) { speakingButton = null; pendingVoiceResumeInputId = null; return; }
+  }
+  pendingVoiceResumeInputId = isVoiceModeEnabled(inputId) ? inputId : null;
+  const utt = new SpeechSynthesisUtterance(stripMarkdownForSpeech(text));
+  utt.rate = 1; utt.pitch = 1;
+  utt.onend = utt.onerror = () => {
+    buttonEl.classList.remove('speaking'); buttonEl.textContent = '🔊';
+    if (speakingButton === buttonEl) speakingButton = null;
+    maybeResumeVoiceMode();
+  };
+  speakingButton = buttonEl;
+  buttonEl.classList.add('speaking'); buttonEl.textContent = '⏹';
+  window.speechSynthesis.speak(utt);
+}
+
+function maybeResumeVoiceMode() {
+  if (!pendingVoiceResumeInputId) return;
+  const inputId = pendingVoiceResumeInputId;
+  pendingVoiceResumeInputId = null;
+  if (!isVoiceModeEnabled(inputId) || activeRecognition) return;
+  const buttonId = inputId === 'tn-chat-input' ? 'tn-mic-btn' : 'ai-mic-btn';
+  const buttonEl = document.getElementById(buttonId);
+  if (buttonEl) startSpeechInput(inputId, buttonEl);
+}
+
+function initSpeechUi() {
+  if (SpeechRecognitionCtor) return;
+  ['ai-mic-btn', 'tn-mic-btn'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) { btn.disabled = true; btn.title = 'Voice requires Chrome or Edge'; }
+  });
+}
+
 function sendAiMsg() {
   const input = document.getElementById('ai-chat-input');
   if (!input || !input.value.trim()) return;
   const msg = input.value.trim();
+  if (activeRecognition && activeSpeechButton?.id === 'ai-mic-btn') stopSpeechInput();
   input.value = '';
   appendAiMsg('user', msg);
   if (!settings.groqKey) {
@@ -1886,6 +2268,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   await loadRuntimeEnv();
   settings = normalizeSettings(settings);
   hydrateSettingsFromEnv();
+  initSpeechUi();
   initBhUpload();
   initTnUpload();
   loadSettings();

@@ -329,8 +329,9 @@
       <div class="ai-messages" id="ai-messages"></div>
       <div class="ai-status" id="ai-status"></div>
       <div class="ai-panel-input" id="ai-input-wrap" style="display:none">
+        <button class="speech-btn" id="ai-mic-btn" onclick="toggleVoiceMode('ai-chat-input', this)" title="Voice mode">🎙</button>
         <textarea class="form-input" id="ai-chat-input" placeholder="Ask the AI..." rows="2" style="min-height:0;resize:none" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAiMsg();}"></textarea>
-        <button class="btn btn-sm btn-primary" onclick="sendAiMsg()">Send</button>
+        <button class="btn btn-sm btn-primary chat-send-btn" onclick="sendAiMsg()">Send</button>
       </div>
     </div>
 
@@ -487,24 +488,52 @@
         <div class="divider-v"></div>
         <div class="ss-item"><div class="ss-item-label">Charts</div><div class="ss-item-val" id="tn-ctx-charts">1</div></div>
         <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-          <button class="btn btn-sm btn-primary" id="tn-push-btn" onclick="pushTnToLog()" style="display:none">Push to Log →</button>
           <button class="btn btn-sm" onclick="resetTnFlow()">New Analysis</button>
         </div>
       </div>
 
-      <!-- Verdict banner -->
-      <div class="verdict-banner" id="tn-verdict-banner"></div>
-
-      <!-- 3-column body: Charts | Checklist | AI Chat -->
+      <!-- 3-column body: Charts | AI Chat | Checklist -->
       <div class="tn-3col">
 
-        <!-- COL 1: Charts (biggest, scrollable) -->
+        <!-- COL 1: Charts (small, scrollable) -->
         <div class="tn-col-charts">
           <div class="tn-col-hd">Charts <span id="tn-ctx-charts2" style="color:var(--amber)"></span></div>
           <div id="tn-thumbs" class="tn-charts-scroll"></div>
         </div>
 
-        <!-- COL 2: Checklist (compact, fits screen) -->
+        <!-- COL 2: AI Chat (centre, dominant) -->
+        <div class="tn-col-ai">
+          <div class="tn-col-hd">
+            <div class="ai-dot" id="tn-ai-dot"></div>
+            EDGE AI <span style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-left:4px">LIVE ANALYSIS</span>
+          </div>
+          <div class="ai-messages tn-ai-msgs" id="tn-ai-msgs"></div>
+          <div class="ai-status" id="tn-ai-status"></div>
+          <div class="verdict-row" id="tn-verdict-row">
+            <div class="verdict-banner" id="tn-verdict-banner"></div>
+            <button class="btn btn-sm btn-primary" id="tn-push-btn" style="display:none;flex-shrink:0" onclick="pushTnToLog()">Log Trade →</button>
+          </div>
+          <!-- Voice mode UI (shown when mic is active) -->
+          <div class="tn-voice-ui" id="tn-voice-ui">
+            <canvas id="tn-voice-canvas" class="tn-voice-canvas"></canvas>
+            <div class="tn-voice-transcript" id="tn-voice-transcript"></div>
+            <div class="tn-voice-status" id="tn-voice-status">Listening…</div>
+            <div class="tn-voice-actions">
+              <button class="tn-voice-attach" onclick="document.getElementById('tn-attach-input').click()" title="Upload chart · or Ctrl+V to paste">📎 Attach chart</button>
+              <button class="tn-voice-cancel" onclick="toggleVoiceMode('tn-chat-input', document.getElementById('tn-mic-btn'))">✕ Exit voice</button>
+            </div>
+          </div>
+          <!-- Text input (hidden in voice mode) -->
+          <div class="ai-panel-input" id="tn-text-input-bar">
+            <button class="tn-attach-btn" onclick="document.getElementById('tn-attach-input').click()" title="Attach chart">📎</button>
+            <input type="file" id="tn-attach-input" accept="image/*" style="display:none" onchange="handleTnAttach(this)">
+            <button class="speech-btn" id="tn-mic-btn" onclick="toggleVoiceMode('tn-chat-input', this)" title="Voice mode">🎙</button>
+            <textarea class="form-input" id="tn-chat-input" placeholder="Reply · Ctrl+V to paste a chart" rows="2" style="min-height:0;resize:none" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendTnMsg();}"></textarea>
+            <button class="btn btn-sm btn-primary chat-send-btn" onclick="sendTnMsg()">Send</button>
+          </div>
+        </div>
+
+        <!-- COL 3: Checklist (right, fits screen) -->
         <div class="tn-col-chk">
           <div class="tn-col-hd">Checklist
             <span class="tn-chk-score" id="tn-score-num" style="color:var(--text3)">0/16</span>
@@ -523,33 +552,12 @@
             <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Full candle hunt</div>
             <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Fake breakout</div>
             <div class="tn-chk-ph-hd p3-hd">P3 · Pattern <span>ANY 1</span></div>
-            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Pin bar / hammer</div>
-            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Engulfing candle</div>
-            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Inside bar</div>
-            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Double top / bottom</div>
-            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>S/R flip retest</div>
-            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Flag continuation</div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div><span id="tn-p3-label">Pattern confirmed</span></div>
             <div class="tn-chk-ph-hd p4-hd">P4 · Session &amp; Risk <span>ALL 4</span></div>
             <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>No news within 30 min</div>
             <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>London / NY session</div>
             <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>R:R ≥ 1:2</div>
             <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>&lt; 2 losses today</div>
-          </div>
-        </div>
-
-        <!-- COL 3: AI Chat -->
-        <div class="tn-col-ai">
-          <div class="tn-col-hd">
-            <div class="ai-dot" id="tn-ai-dot"></div>
-            EDGE AI <span style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-left:4px">LIVE ANALYSIS</span>
-          </div>
-          <div class="ai-messages tn-ai-msgs" id="tn-ai-msgs"></div>
-          <div class="ai-status" id="tn-ai-status"></div>
-          <div class="ai-panel-input">
-            <button class="tn-attach-btn" onclick="document.getElementById('tn-attach-input').click()" title="Attach chart">📎</button>
-            <input type="file" id="tn-attach-input" accept="image/*" style="display:none" onchange="handleTnAttach(this)">
-            <textarea class="form-input" id="tn-chat-input" placeholder="Reply · Ctrl+V to paste a chart" rows="2" style="min-height:0;resize:none" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendTnMsg();}"></textarea>
-            <button class="btn btn-sm btn-primary" onclick="sendTnMsg()">Send</button>
           </div>
         </div>
 
