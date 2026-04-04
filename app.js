@@ -56,37 +56,138 @@ function saveSettings()  {
   Store.set('edge_settings', settings);
 }
 
-// ── MOBILE SIDEBAR ───────────────────────────────────
-function toggleSidebar() {
-  const sidebar  = document.getElementById('sidebar');
+// ── TOP NAV ──────────────────────────────────────────
+function toggleNavGroup(id) {
+  const group = document.getElementById(id);
+  if (!group) return;
+  const isOpen = group.classList.contains('open');
+  // Close all groups first
+  document.querySelectorAll('.nav-group').forEach(g => g.classList.remove('open'));
+  if (!isOpen) {
+    group.classList.add('open');
+    document.getElementById('backdrop').classList.add('show');
+  } else {
+    document.getElementById('backdrop').classList.remove('show');
+  }
+}
+
+function toggleMobileMenu() {
+  const menu     = document.getElementById('mobile-menu');
   const backdrop = document.getElementById('backdrop');
-  const isOpen   = sidebar.classList.contains('open');
-  sidebar.classList.toggle('open', !isOpen);
+  const isOpen   = menu.classList.contains('open');
+  menu.classList.toggle('open', !isOpen);
   backdrop.classList.toggle('show', !isOpen);
   document.body.style.overflow = isOpen ? '' : 'hidden';
 }
-function closeSidebar() {
-  document.getElementById('sidebar').classList.remove('open');
+
+function closeAllNav() {
+  document.querySelectorAll('.nav-group').forEach(g => g.classList.remove('open'));
+  document.getElementById('mobile-menu').classList.remove('open');
   document.getElementById('backdrop').classList.remove('show');
   document.body.style.overflow = '';
 }
 
-// ── NAV ──────────────────────────────────────────────
-function nav(id, el) {
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-  if (el) el.classList.add('active');
-  window.scrollTo(0, 0);
-  closeSidebar();
+// Keep legacy aliases so any old refs don't break
+function toggleSidebar() { toggleMobileMenu(); }
+function closeSidebar()   { closeAllNav(); }
 
-  // Run section-specific init
+function nav(id, el) {
+  // Show the target section
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  const target = document.getElementById(id);
+  if (target) target.classList.add('active');
+
+  // Update active state across all nav elements
+  document.querySelectorAll('.nav-group-btn, .nav-dd-item, .mob-item').forEach(n => n.classList.remove('active'));
+  if (el) el.classList.add('active');
+
+  // Also highlight parent group btn when a dropdown item is clicked
+  if (el) {
+    const parentGroup = el.closest('.nav-group');
+    if (parentGroup) {
+      const btn = parentGroup.querySelector('.nav-group-btn');
+      if (btn) btn.classList.add('active');
+    }
+    // Mirror on mobile menu
+    document.querySelectorAll('.mob-item').forEach(m => {
+      const oc = m.getAttribute('onclick') || '';
+      if (oc.includes(`'${id}'`)) m.classList.add('active');
+    });
+  }
+
+  window.scrollTo(0, 0);
+  closeAllNav();
+
   if (id === 'backtest-hub')  initBacktestHub();
   if (id === 'gold')          renderPairPerf('XAU/USD', 'gold-perf');
   if (id === 'btc')           renderPairPerf('BTC/USD', 'btc-perf');
   if (id === 'eurusd')        renderPairPerf('EUR/USD', 'eurusd-perf');
   if (id === 'live-history')  renderLiveHistory();
   if (id === 'dashboard')     updateDashboard();
+}
+
+// ── MINI CHECKLIST ────────────────────────────────────
+function toggleChk(el, ctx) {
+  el.classList.toggle('checked');
+  updateMiniScore(ctx);
+}
+
+function updateMiniScore(ctx) {
+  const container = document.getElementById(ctx + '-chk');
+  if (!container) return;
+  const items   = container.querySelectorAll('.mini-item');
+  const all     = [...items];
+  const checked = all.filter(i => i.classList.contains('checked')).length;
+
+  // Gate logic: P1=items 0-2 (all), P2=3-5 (any), P3=6-11 (any), P4=12-15 (all)
+  const p1 = [0,1,2].every(i => all[i]?.classList.contains('checked'));
+  const p2 = [3,4,5].some(i  => all[i]?.classList.contains('checked'));
+  const p3 = [6,7,8,9,10,11].some(i => all[i]?.classList.contains('checked'));
+  const p4 = [12,13,14,15].every(i  => all[i]?.classList.contains('checked'));
+
+  const fill    = document.getElementById(ctx + '-score-fill');
+  const num     = document.getElementById(ctx + '-score-num');
+  const verdict = document.getElementById(ctx + '-score-verdict');
+
+  if (fill) fill.style.width = Math.round(checked / 16 * 100) + '%';
+
+  let color, text;
+  if (checked >= 12 && p1 && p2 && p3 && p4) {
+    color = 'var(--green)'; text = 'All gates passed — ready to trade';
+    if (fill) fill.style.background = 'var(--green2)';
+  } else if (checked >= 10 && p1 && p2 && p3) {
+    color = 'var(--amber)'; text = 'Marginal — reduce size to 0.5%';
+    if (fill) fill.style.background = 'var(--amber2)';
+  } else {
+    color = 'var(--red)'; text = checked < 10 ? 'Not ready — keep marking' : 'Gate failed — check phases';
+    if (fill) fill.style.background = 'var(--red2)';
+  }
+  if (num)     { num.textContent = checked + '/16'; num.style.color = color; }
+  if (verdict) { verdict.textContent = text; verdict.style.color = color; }
+
+  // Sync hidden score input (Backtest uses it for save)
+  const scoreInput = document.getElementById(ctx + '-user-score');
+  if (scoreInput) scoreInput.value = checked;
+
+  // Enable/disable analyze button (Trade Now)
+  if (ctx === 'tn') {
+    const btn = document.getElementById('tn-analyze-btn');
+    const hasImg = document.getElementById('tn-image-data')?.value;
+    if (btn) btn.disabled = !hasImg;
+  }
+}
+
+function getMiniChecklist(ctx) {
+  const container = document.getElementById(ctx + '-chk');
+  if (!container) return '';
+  const phases = ['P1 Location', 'P2 Stop Hunt', 'P3 Pattern', 'P4 Session/Risk'];
+  const items   = [...container.querySelectorAll('.mini-item')];
+  const groups  = [[0,1,2],[3,4,5],[6,7,8,9,10,11],[12,13,14,15]];
+  return groups.map((g, pi) =>
+    phases[pi] + ': ' + g.map(i =>
+      items[i] ? (items[i].classList.contains('checked') ? '✓' : '✗') + ' ' + items[i].textContent.trim() : ''
+    ).join(' | ')
+  ).join('\n');
 }
 
 // ── CHECKLIST ────────────────────────────────────────
@@ -436,7 +537,19 @@ function updateSidebar() {
   const sbWr = document.getElementById('sb-wr');
   const sbR  = document.getElementById('sb-r');
   if (sbWr) { sbWr.textContent = wr+'%'; sbWr.style.color = wr>=65?'var(--green)':wr>=40?'var(--amber)':'var(--red)'; }
-  if (sbR)  { sbR.textContent = (totalR>=0?'+':'')+totalR.toFixed(1)+'R'; }
+  if (sbR)  { sbR.textContent = (totalR>=0?'+':'')+totalR.toFixed(1)+'R'; sbR.style.color = totalR>=0?'var(--amber)':'var(--red)'; }
+
+  // Last 5 outcome pips
+  const pipsEl = document.getElementById('sb-outcomes');
+  if (pipsEl) {
+    const last5 = trades.slice(0, 5);
+    pipsEl.innerHTML = last5.map(t => {
+      const cls = t.out.startsWith('Win') ? 'w' : t.out === 'Loss' ? 'l' : 'p';
+      return `<div class="ss-pip ${cls}" title="${t.out} · ${t.inst || ''} ${t.date || ''}"></div>`;
+    }).join('') + (trades.length > 5
+      ? `<span style="font-size:9px;color:var(--text3);font-family:var(--mono);margin-left:4px">+${trades.length-5}</span>`
+      : '');
+  }
 }
 
 // ── BACKTEST HUB ─────────────────────────────────────
@@ -495,7 +608,7 @@ function showBhSelect()   { document.getElementById('bh-select').style.display='
 function showBhSession()  { document.getElementById('bh-select').style.display='none'; document.getElementById('bh-session').style.display='block'; }
 
 function resetBhForm() {
-  document.getElementById('bh-user-score').value  = '';
+  document.getElementById('bh-user-score').value   = '';
   document.getElementById('bh-user-verdict').value = 'valid';
   document.getElementById('bh-outcome').value      = 'Win (TP2)';
   document.getElementById('bh-notes').value        = '';
@@ -503,6 +616,9 @@ function resetBhForm() {
   bhSession.currentImage = null;
   const aiBtn = document.getElementById('bh-ai-btn');
   if (aiBtn) aiBtn.style.display = 'none';
+  // Reset mini-checklist
+  document.querySelectorAll('#bh-chk .mini-item').forEach(i => i.classList.remove('checked'));
+  updateMiniScore('bh');
   hideBhVerdicts();
 }
 
@@ -521,8 +637,9 @@ function runBhAiAnalysis() {
     return;
   }
 
-  const userScore   = document.getElementById('bh-user-score').value || '?';
-  const userVerdict = document.getElementById('bh-user-verdict').value;
+  const userScore    = document.getElementById('bh-user-score').value || '0';
+  const userVerdict  = document.getElementById('bh-user-verdict').value;
+  const chkSummary   = getMiniChecklist('bh');
 
   appendAiMsg('user', `My call: ${userVerdict} · Score: ${userScore}/16`);
   appendAiMsg('ai', 'Analyzing against the 16-point EDGE checklist…');
@@ -530,8 +647,10 @@ function runBhAiAnalysis() {
   const prompt = `You are EDGE, a strict backtest coaching AI for the Stop Hunt + Pattern Confluence strategy.
 
 Trader self-assessment — Score: ${userScore}/16 · Call: ${userVerdict}
+Trader's checklist markings:
+${chkSummary}
 
-Evaluate this chart screenshot against the full EDGE 16-point checklist. Be strict and educational. Walk through all 4 phases.
+Evaluate this chart screenshot against the full EDGE 16-point checklist. Be strict and educational. Walk through all 4 phases. Pay special attention to items the trader marked incorrectly.
 
 Respond ONLY in this exact JSON format (no extra text):
 {
@@ -794,11 +913,17 @@ function runTnAnalysis() {
     return;
   }
 
+  const tnChkSummary = getMiniChecklist('tn');
+  const tnScore      = document.getElementById('tn-score-num')?.textContent || '—';
+
   const prompt = `You are EDGE, a strict trading rules enforcer for the Stop Hunt + Pattern Confluence strategy.
 
 Instrument: ${pair} | Session: ${session} | Direction considered: ${dir}
+Trader's self-check score: ${tnScore}
+Trader's checklist markings:
+${tnChkSummary}
 
-Evaluate this chart against the 16-point EDGE checklist. Be strict. Respond in this exact JSON format:
+Compare the chart against the trader's markings. Correct any mistakes. Respond in this exact JSON format:
 {
   "score": <0-16>,
   "p1_pass": <true/false>,
