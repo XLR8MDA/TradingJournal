@@ -10,69 +10,134 @@
 </head>
 <body>
 
-<!-- MOBILE TOP BAR -->
-<div class="mobile-bar">
-  <span class="mobile-logo">EDGE</span>
-  <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">
+<!-- TOP NAV -->
+<nav class="topnav" id="topnav">
+  <div class="topnav-logo">
+    <div class="topnav-logo-mark">EDGE</div>
+    <div class="topnav-logo-sub">Trading<br>Journal</div>
+  </div>
+
+  <div class="topnav-groups">
+    <!-- Dashboard -->
+    <div class="nav-group">
+      <div class="nav-group-btn active" data-section="dashboard" onclick="nav('dashboard',this)">
+        <span class="nav-icon">▦</span> Dashboard
+      </div>
+    </div>
+
+    <!-- Backtest -->
+    <div class="nav-group" id="ng-backtest">
+      <div class="nav-group-btn" data-section="backtest-hub" onclick="nav('backtest-hub',this)">
+        <span class="nav-icon">⊞</span> Backtest <span class="nav-caret">▾</span>
+      </div>
+      <div class="nav-dropdown">
+        <div class="nav-dd-item" onclick="nav('backtest-hub',this)"><span class="nav-dd-icon">⊞</span>Backtest Hub</div>
+        <div class="nav-dd-item" onclick="nav('gold',this)"><span class="nav-dd-icon">◈</span>XAU/USD <span class="nav-dd-badge">GOLD</span></div>
+        <div class="nav-dd-item" onclick="nav('btc',this)"><span class="nav-dd-icon">◈</span>BTC/USD <span class="nav-dd-badge">BTC</span></div>
+        <div class="nav-dd-item" onclick="nav('eurusd',this)"><span class="nav-dd-icon">◈</span>EUR/USD <span class="nav-dd-badge">FX</span></div>
+      </div>
+    </div>
+
+    <!-- Live Trading -->
+    <div class="nav-group" id="ng-live">
+      <div class="nav-group-btn" data-section="trade-now" onclick="nav('trade-now',this)">
+        <span class="nav-icon">◉</span> Live Trading <span class="nav-caret">▾</span>
+      </div>
+      <div class="nav-dropdown">
+        <div class="nav-dd-item" onclick="nav('trade-now',this)"><span class="nav-dd-icon">◉</span>Trade Now</div>
+        <div class="nav-dd-item" onclick="nav('logger',this)"><span class="nav-dd-icon">+</span>Log Trade</div>
+        <div class="nav-dd-item" onclick="nav('live-history',this)"><span class="nav-dd-icon">≡</span>Live History</div>
+      </div>
+    </div>
+
+    <!-- Strategy -->
+    <div class="nav-group" id="ng-strategy">
+      <div class="nav-group-btn" data-section="checklist" onclick="nav('checklist',this)">
+        <span class="nav-icon">✦</span> Strategy <span class="nav-caret">▾</span>
+      </div>
+      <div class="nav-dropdown">
+        <div class="nav-dd-item" onclick="nav('checklist',this)"><span class="nav-dd-icon">✦</span>Entry Checklist</div>
+        <div class="nav-dd-item" onclick="nav('exit',this)"><span class="nav-dd-icon">⊣</span>Exit Rules</div>
+        <div class="nav-dd-item" onclick="nav('ltf',this)"><span class="nav-dd-icon">↘</span>LTF Entry</div>
+        <div class="nav-dd-item" onclick="nav('patterns',this)"><span class="nav-dd-icon">◬</span>Patterns</div>
+        <div class="nav-dd-item" onclick="nav('profitability',this)"><span class="nav-dd-icon">◫</span>Profitability</div>
+        <div class="nav-dd-item" onclick="nav('simulator',this)"><span class="nav-dd-icon">⟳</span>Simulator</div>
+      </div>
+    </div>
+
+    <!-- Psychology -->
+    <div class="nav-group" id="ng-psychology">
+      <div class="nav-group-btn" data-section="mindset" onclick="nav('mindset',this)">
+        <span class="nav-icon">◎</span> Psychology <span class="nav-caret">▾</span>
+      </div>
+      <div class="nav-dropdown">
+        <div class="nav-dd-item" onclick="nav('mistakes',this)"><span class="nav-dd-icon">⚠</span>Profit Killers</div>
+        <div class="nav-dd-item" onclick="nav('phases',this)"><span class="nav-dd-icon">◎</span>Trader Phases</div>
+        <div class="nav-dd-item" onclick="nav('routine',this)"><span class="nav-dd-icon">◷</span>Daily Routine</div>
+        <div class="nav-dd-item" onclick="nav('mindset',this)"><span class="nav-dd-icon">◈</span>Mindset Rules</div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="nav-group">
+      <div class="nav-group-btn" data-section="settings" onclick="nav('settings',this)">
+        <span class="nav-icon">⚙</span> Settings
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats strip -->
+  <div class="topnav-stats">
+    <div class="tn-stat">
+      <div class="tn-stat-label">Win rate</div>
+      <div class="tn-stat-val" id="sb-wr">—</div>
+    </div>
+    <div class="tn-stat">
+      <div class="tn-stat-label">Total R</div>
+      <div class="tn-stat-val" id="sb-r" style="color:var(--amber)">—</div>
+    </div>
+    <div class="tn-pips" id="sb-outcomes"></div>
+  </div>
+
+  <!-- Mobile hamburger -->
+  <button class="nav-hamburger" onclick="toggleMobileMenu()" aria-label="Menu">
     <span></span><span></span><span></span>
   </button>
+</nav>
+
+<!-- MOBILE FULL MENU -->
+<div class="mobile-menu" id="mobile-menu">
+  <div class="mob-section">Overview</div>
+  <div class="mob-item" onclick="nav('dashboard',this)"><span class="nav-icon">▦</span>Dashboard</div>
+  <div class="mob-section">Backtest</div>
+  <div class="mob-item" onclick="nav('backtest-hub',this)"><span class="nav-icon">⊞</span>Backtest Hub</div>
+  <div class="mob-item" onclick="nav('gold',this)"><span class="nav-icon">◈</span>XAU/USD</div>
+  <div class="mob-item" onclick="nav('btc',this)"><span class="nav-icon">◈</span>BTC/USD</div>
+  <div class="mob-item" onclick="nav('eurusd',this)"><span class="nav-icon">◈</span>EUR/USD</div>
+  <div class="mob-section">Live Trading</div>
+  <div class="mob-item" onclick="nav('trade-now',this)"><span class="nav-icon">◉</span>Trade Now</div>
+  <div class="mob-item" onclick="nav('logger',this)"><span class="nav-icon">+</span>Log Trade</div>
+  <div class="mob-item" onclick="nav('live-history',this)"><span class="nav-icon">≡</span>Live History</div>
+  <div class="mob-section">Strategy</div>
+  <div class="mob-item" onclick="nav('checklist',this)"><span class="nav-icon">✦</span>Entry Checklist</div>
+  <div class="mob-item" onclick="nav('exit',this)"><span class="nav-icon">⊣</span>Exit Rules</div>
+  <div class="mob-item" onclick="nav('ltf',this)"><span class="nav-icon">↘</span>LTF Entry</div>
+  <div class="mob-item" onclick="nav('patterns',this)"><span class="nav-icon">◬</span>Patterns</div>
+  <div class="mob-item" onclick="nav('profitability',this)"><span class="nav-icon">◫</span>Profitability</div>
+  <div class="mob-item" onclick="nav('simulator',this)"><span class="nav-icon">⟳</span>Simulator</div>
+  <div class="mob-section">Psychology</div>
+  <div class="mob-item" onclick="nav('mistakes',this)"><span class="nav-icon">⚠</span>Profit Killers</div>
+  <div class="mob-item" onclick="nav('phases',this)"><span class="nav-icon">◎</span>Trader Phases</div>
+  <div class="mob-item" onclick="nav('routine',this)"><span class="nav-icon">◷</span>Daily Routine</div>
+  <div class="mob-item" onclick="nav('mindset',this)"><span class="nav-icon">◈</span>Mindset Rules</div>
+  <div class="mob-section">System</div>
+  <div class="mob-item" onclick="nav('settings',this)"><span class="nav-icon">⚙</span>Settings</div>
 </div>
 
 <!-- BACKDROP -->
-<div class="backdrop" id="backdrop" onclick="closeSidebar()"></div>
+<div class="backdrop" id="backdrop" onclick="closeAllNav()"></div>
 
 <div class="layout">
-
-<!-- SIDEBAR -->
-<aside class="sidebar" id="sidebar">
-  <div class="logo">
-    <div class="logo-mark">EDGE</div>
-    <div class="logo-sub">Trading Journal</div>
-  </div>
-  <nav class="nav">
-
-    <div class="nav-section">Overview</div>
-    <div class="nav-item active" onclick="nav('dashboard',this)"><div class="nav-dot"></div>Dashboard</div>
-
-    <div class="nav-section">Backtest</div>
-    <div class="nav-item" onclick="nav('backtest-hub',this)"><div class="nav-dot"></div>Backtest Hub</div>
-    <div class="nav-item" onclick="nav('gold',this)"><div class="nav-dot"></div>XAU/USD<span class="nav-badge">GOLD</span></div>
-    <div class="nav-item" onclick="nav('btc',this)"><div class="nav-dot"></div>BTC/USD<span class="nav-badge">BTC</span></div>
-    <div class="nav-item" onclick="nav('eurusd',this)"><div class="nav-dot"></div>EUR/USD<span class="nav-badge">FX</span></div>
-
-    <div class="nav-section">Live Trading</div>
-    <div class="nav-item" onclick="nav('trade-now',this)"><div class="nav-dot"></div>Trade Now</div>
-    <div class="nav-item" onclick="nav('logger',this)"><div class="nav-dot"></div>Log Trade</div>
-    <div class="nav-item" onclick="nav('live-history',this)"><div class="nav-dot"></div>Live History</div>
-
-    <div class="nav-section">Strategy</div>
-    <div class="nav-item" onclick="nav('checklist',this)"><div class="nav-dot"></div>Entry Checklist</div>
-    <div class="nav-item" onclick="nav('exit',this)"><div class="nav-dot"></div>Exit Rules</div>
-    <div class="nav-item" onclick="nav('ltf',this)"><div class="nav-dot"></div>LTF Entry</div>
-    <div class="nav-item" onclick="nav('patterns',this)"><div class="nav-dot"></div>Patterns</div>
-    <div class="nav-item" onclick="nav('profitability',this)"><div class="nav-dot"></div>Profitability</div>
-    <div class="nav-item" onclick="nav('simulator',this)"><div class="nav-dot"></div>Simulator</div>
-
-    <div class="nav-section">Psychology</div>
-    <div class="nav-item" onclick="nav('mistakes',this)"><div class="nav-dot"></div>7 Profit Killers</div>
-    <div class="nav-item" onclick="nav('phases',this)"><div class="nav-dot"></div>Trader Phases</div>
-    <div class="nav-item" onclick="nav('routine',this)"><div class="nav-dot"></div>Daily Routine</div>
-    <div class="nav-item" onclick="nav('mindset',this)"><div class="nav-dot"></div>Mindset Rules</div>
-
-    <div class="nav-section">System</div>
-    <div class="nav-item" onclick="nav('settings',this)"><div class="nav-dot"></div>Settings</div>
-
-  </nav>
-  <div class="sidebar-stats">
-    <div class="ss-label">Live win rate</div>
-    <div class="ss-val" id="sb-wr">—</div>
-    <div style="margin-top:10px">
-      <div class="ss-label">Total R earned</div>
-      <div class="ss-val" id="sb-r" style="color:var(--amber)">—</div>
-    </div>
-  </div>
-</aside>
-
 <!-- MAIN -->
 <main class="main">
 
@@ -166,24 +231,58 @@
     <div class="bh-session-wrap">
 
       <!-- LEFT: Upload + Your verdict -->
-      <div>
+      <div class="bh-workspace">
         <div class="card" style="margin-bottom:0">
           <div class="card-title">Chart screenshot</div>
           <div class="bh-upload-zone" id="bh-upload-zone">
             <div id="bh-preview">
               <div class="upload-icon">📷</div>
               <div class="upload-label">Drop chart screenshot here</div>
-              <div class="upload-hint">or click to browse · PNG, JPG, WEBP</div>
+              <div class="upload-hint">or click to browse · or <kbd>Ctrl+V</kbd> to paste from clipboard</div>
             </div>
           </div>
           <input type="file" id="bh-file-input" accept="image/*" style="display:none">
 
-          <div class="card-title" style="margin-top:16px">Your verdict (before AI)</div>
-          <div class="form-grid" style="margin-bottom:12px">
-            <div class="form-group">
-              <label class="form-label">Your score (/16)</label>
-              <input type="number" class="form-input" id="bh-user-score" min="0" max="16" placeholder="0–16">
+          <div id="bh-chk-wrap" style="display:none">
+          <div class="card-title" style="margin-top:16px;display:flex;align-items:center;gap:8px">Your checklist <span style="font-size:11px;font-weight:400;color:var(--text3);font-family:var(--mono)">tick as you review with AI</span></div>
+          <div class="mini-chk" id="bh-chk" style="margin-bottom:12px">
+            <div class="mini-phase">
+              <div class="mini-phase-hd"><div class="mini-phase-num p1">1</div><div class="mini-phase-name">Location</div><div class="mini-phase-req">ALL 3</div></div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>Price within 10–15 pips of defined S/R</div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>S/R confirmed on 2+ prior touches</div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>Higher timeframe agrees with direction</div>
             </div>
+            <div class="mini-phase">
+              <div class="mini-phase-hd"><div class="mini-phase-num p2">2</div><div class="mini-phase-name">Stop Hunt</div><div class="mini-phase-req">ANY 1</div></div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>Wick hunt — candle wick beyond S/R, closed back inside</div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>Full candle hunt — candle closed beyond, next closed back</div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>Fake breakout — 2–4 candles, no follow-through</div>
+            </div>
+            <div class="mini-phase">
+              <div class="mini-phase-hd"><div class="mini-phase-num p3">3</div><div class="mini-phase-name">Pattern</div><div class="mini-phase-req">ANY 1</div></div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>Pin bar / hammer / shooting star</div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>Bullish or bearish engulfing candle</div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>Inside bar coiled at the level</div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>Double top / bottom with stop hunt</div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>S/R flip retest</div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>Bull/bear flag continuation</div>
+            </div>
+            <div class="mini-phase">
+              <div class="mini-phase-hd"><div class="mini-phase-num p4">4</div><div class="mini-phase-name">Session &amp; Risk</div><div class="mini-phase-req">ALL 4</div></div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>No high-impact news within 30 min</div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>London or NY session timing</div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>R:R ratio ≥ 1:2</div>
+              <div class="mini-item" onclick="toggleChk(this,'bh')"><div class="mini-chk-box">✓</div>Fewer than 2 losses today</div>
+            </div>
+            <div class="mini-score-bar" id="bh-score-bar">
+              <div class="mini-score-track"><div class="mini-score-fill" id="bh-score-fill" style="width:0%;background:var(--red2)"></div></div>
+              <div class="mini-score-num" id="bh-score-num" style="color:var(--text3)">0/16</div>
+              <div class="mini-score-verdict" id="bh-score-verdict" style="color:var(--text3)">Mark items above</div>
+            </div>
+          </div>
+          </div><!-- end bh-chk-wrap -->
+          <input type="hidden" id="bh-user-score">
+          <div class="form-grid" style="margin-bottom:12px">
             <div class="form-group">
               <label class="form-label">Your call</label>
               <select class="form-input" id="bh-user-verdict">
@@ -217,22 +316,30 @@
         </div>
       </div>
 
-      <!-- RIGHT: AI panel -->
-      <div class="ai-panel" id="ai-panel">
-        <div class="ai-panel-head">
-          <div class="ai-dot" id="ai-dot"></div>
-          <div class="ai-panel-title">EDGE AI</div>
-          <div class="ai-panel-mode">BACKTEST COACH</div>
-        </div>
-        <div class="ai-messages" id="ai-messages"></div>
-        <div class="ai-status" id="ai-status"></div>
-        <div class="ai-panel-input" id="ai-input-wrap" style="display:none">
-          <textarea class="form-input" id="ai-chat-input" placeholder="Ask the AI..." rows="2" style="min-height:0;resize:none" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAiMsg();}"></textarea>
-          <button class="btn btn-sm btn-primary" onclick="sendAiMsg()">Send</button>
-        </div>
-      </div>
-
     </div><!-- end bh-session-wrap -->
+
+    <!-- AI drawer — fixed slide-in panel -->
+    <div class="ai-panel ai-panel-chat" id="ai-panel">
+      <div class="ai-panel-head">
+        <div class="ai-dot" id="ai-dot"></div>
+        <div class="ai-panel-title">EDGE AI</div>
+        <div class="ai-panel-mode">BACKTEST COACH</div>
+        <button class="ai-panel-close" onclick="toggleAiDrawer()" title="Close">✕</button>
+      </div>
+      <div class="ai-messages" id="ai-messages"></div>
+      <div class="ai-status" id="ai-status"></div>
+      <div class="ai-panel-input" id="ai-input-wrap" style="display:none">
+        <textarea class="form-input" id="ai-chat-input" placeholder="Ask the AI..." rows="2" style="min-height:0;resize:none" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendAiMsg();}"></textarea>
+        <button class="btn btn-sm btn-primary" onclick="sendAiMsg()">Send</button>
+      </div>
+    </div>
+
+    <!-- Floating toggle tab (only shown during active backtest session) -->
+    <button class="ai-drawer-toggle" id="ai-drawer-toggle" onclick="toggleAiDrawer()" title="Toggle AI Chat" style="display:none">
+      <div class="ai-badge" id="ai-badge"></div>
+      <span class="ai-toggle-label">AI</span>
+      <span class="ai-toggle-arrow">‹</span>
+    </button>
   </div><!-- end bh-session -->
 </section>
 
@@ -281,80 +388,175 @@
     <button class="tab-btn" data-tab="mt5" onclick="switchTab('mt5')">MT5 Live Monitor</button>
   </div>
 
-  <!-- TAB A: Screenshot -->
+  <!-- TAB A: Screenshot Analysis — 3-step flow -->
   <div class="tab-content active" id="tab-screenshot">
 
-    <!-- Verdict banner -->
-    <div class="verdict-banner" id="tn-verdict-banner"></div>
-
-    <div class="upload-row">
-      <!-- Left: upload + inputs -->
-      <div>
-        <div class="card">
-          <div class="card-title">Upload live chart</div>
-          <div class="bh-upload-zone" id="tn-upload-zone" style="min-height:160px">
-            <div id="tn-preview">
-              <div class="upload-icon">📷</div>
-              <div class="upload-label">Drop your live chart screenshot here</div>
-              <div class="upload-hint">TradingView screenshot · PNG, JPG, WEBP</div>
-            </div>
-          </div>
-          <input type="file" id="tn-file-input" accept="image/*" style="display:none">
-          <input type="hidden" id="tn-image-data">
-        </div>
-
-        <div class="card">
-          <div class="card-title">Trade details</div>
-          <div class="form-grid">
-            <div class="form-group">
-              <label class="form-label">Pair</label>
-              <select class="form-input" id="tn-pair">
-                <option>XAU/USD</option><option>BTC/USD</option><option>EUR/USD</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Session</label>
-              <select class="form-input" id="tn-session">
-                <option>London open</option><option>NY open</option><option>NY close</option><option>Asian</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Direction</label>
-              <select class="form-input" id="tn-dir">
-                <option>Long</option><option>Short</option>
-              </select>
-            </div>
-          </div>
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-            <button class="btn btn-primary" id="tn-analyze-btn" onclick="runTnAnalysis()" disabled>Analyze Chart</button>
-            <button class="btn btn-sm" id="tn-push-btn" onclick="pushTnToLog()" style="display:none">Push to Log Trade →</button>
+    <!-- STEP 1: Upload only -->
+    <div id="tn-step-upload">
+      <div class="tn-upload-card">
+        <div style="font-size:40px;line-height:1;margin-bottom:14px;opacity:.55">📊</div>
+        <div class="tn-upload-title">Upload your chart to begin</div>
+        <div class="tn-upload-sub">Start with any timeframe — 4H, 1H, 15M or 5M</div>
+        <div class="bh-upload-zone" id="tn-upload-zone">
+          <div id="tn-preview">
+            <div class="upload-icon">📷</div>
+            <div class="upload-label">Drop chart here</div>
+            <div class="upload-hint">click to browse · <kbd>Ctrl+V</kbd> to paste from TradingView</div>
           </div>
         </div>
+        <input type="file" id="tn-file-input" accept="image/*" style="display:none">
       </div>
+    </div>
 
-      <!-- Right: AI panel (trade now mode) -->
-      <div class="ai-panel" style="position:sticky;top:20px">
-        <div class="ai-panel-head">
-          <div class="ai-dot" style="background:var(--text3)"></div>
-          <div class="ai-panel-title">EDGE AI</div>
-          <div class="ai-panel-mode">PRE-TRADE</div>
+    <!-- STEP 2: Quick setup (appears after first upload) -->
+    <div id="tn-step-setup" style="display:none">
+      <div class="tn-setup-wrap">
+        <!-- Left: chart preview -->
+        <div>
+          <div style="font-size:11px;font-weight:600;color:var(--text3);font-family:var(--mono);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Uploaded chart</div>
+          <img id="tn-setup-img" src="" alt="chart" style="width:100%;border-radius:8px;border:1px solid var(--border);display:block">
+          <button class="btn btn-sm" style="margin-top:10px;width:100%;justify-content:center" onclick="resetTnFlow()">← Change</button>
         </div>
-        <div style="padding:16px;font-size:12px;color:var(--text2);line-height:1.7">
-          <div style="margin-bottom:10px">The AI will evaluate your chart against all <strong style="color:var(--text)">16 checklist criteria</strong>:</div>
-          <div style="font-size:11px;color:var(--text3);font-family:var(--mono);line-height:2">
-            P1 · Location filter (3 gates)<br>
-            P2 · Stop hunt confirmation (1+ required)<br>
-            P3 · Pattern signal (1+ required)<br>
-            P4 · Session &amp; risk filter (4 gates)
+        <!-- Right: setup form -->
+        <div class="card" style="margin:0;align-self:start">
+          <div class="card-title">Quick setup</div>
+
+          <div class="form-group">
+            <label class="form-label">Trading pair <span style="color:var(--red)">*</span></label>
+            <div class="tn-pair-grid" id="tn-pair-grid">
+              <button class="tn-pair-btn" onclick="selectTnPair(this,'XAU/USD')">XAU/USD<span>Gold</span></button>
+              <button class="tn-pair-btn" onclick="selectTnPair(this,'BTC/USD')">BTC/USD<span>Bitcoin</span></button>
+              <button class="tn-pair-btn" onclick="selectTnPair(this,'EUR/USD')">EUR/USD<span>Euro</span></button>
+              <button class="tn-pair-btn" onclick="selectTnPair(this,'GBP/USD')">GBP/USD<span>Cable</span></button>
+              <button class="tn-pair-btn" onclick="selectTnPair(this,'NAS100')">NAS100<span>Nasdaq</span></button>
+              <button class="tn-pair-btn" onclick="selectTnPair(this,'ETH/USD')">ETH/USD<span>Ethereum</span></button>
+            </div>
+            <input class="form-input" id="tn-pair-custom" placeholder="Other pair (e.g. USD/JPY, SOL/USD)" style="margin-top:8px;display:none" oninput="setTnPairCustom(this.value)">
+            <button class="btn btn-sm" id="tn-pair-other-btn" style="margin-top:6px;font-size:11px;color:var(--text3);background:none;border:none;cursor:pointer;padding:0" onclick="showTnPairCustom()">+ other pair</button>
           </div>
-          <div style="margin-top:12px;padding:10px;background:rgba(248,113,113,.06);border:1px solid rgba(248,113,113,.15);border-radius:6px;font-size:11px;color:var(--text2)">
-            If any hard gate fails → <strong style="color:var(--red)">STOP banner</strong> — do not enter.<br>
-            Score ≥12, all gates pass → <strong style="color:var(--green)">GO banner</strong> with SL and R:R estimate.
+
+          <div class="form-group" style="margin-top:16px">
+            <label class="form-label">Timeframe of this chart <span style="color:var(--red)">*</span></label>
+            <div class="tn-pill-row" id="tn-tf-row">
+              <button class="tn-pill" onclick="selectTnTf(this,'4H')">4H</button>
+              <button class="tn-pill" onclick="selectTnTf(this,'1H')">1H</button>
+              <button class="tn-pill" onclick="selectTnTf(this,'30M')">30M</button>
+              <button class="tn-pill" onclick="selectTnTf(this,'15M')">15M</button>
+              <button class="tn-pill" onclick="selectTnTf(this,'5M')">5M</button>
+            </div>
           </div>
+
+          <div class="form-group" style="margin-top:16px">
+            <label class="form-label">Session <span style="color:var(--text3);font-weight:400">(optional)</span></label>
+            <div class="tn-pill-row" id="tn-sess-row">
+              <button class="tn-pill" onclick="selectTnSess(this,'Pre-London')">Pre-London<small>~07:30 GMT</small></button>
+              <button class="tn-pill" onclick="selectTnSess(this,'London Open')">London Open<small>08:00 GMT</small></button>
+              <button class="tn-pill" onclick="selectTnSess(this,'Pre-NY')">Pre-NY<small>~12:30 GMT</small></button>
+              <button class="tn-pill" onclick="selectTnSess(this,'NY Open')">NY Open<small>13:00 GMT</small></button>
+              <button class="tn-pill" onclick="selectTnSess(this,'Asian')">Asian<small>00:00 GMT</small></button>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-top:16px">
+            <label class="form-label">Your bias <span style="color:var(--text3);font-weight:400">(optional — AI makes final call)</span></label>
+            <div class="tn-pill-row">
+              <button class="tn-pill tn-bias-btn" id="tn-bias-long" onclick="selectTnBias('long')">↑ Long</button>
+              <button class="tn-pill tn-bias-btn" id="tn-bias-short" onclick="selectTnBias('short')">↓ Short</button>
+              <button class="tn-pill tn-bias-btn active" id="tn-bias-none" onclick="selectTnBias('none')">— No bias</button>
+            </div>
+          </div>
+
+          <button class="btn btn-primary" id="tn-start-btn" onclick="startTnAnalysis()" disabled style="margin-top:20px;width:100%;justify-content:center">
+            Start Analysis →
+          </button>
+          <div id="tn-setup-err" style="font-size:12px;color:var(--red);margin-top:8px;font-family:var(--mono)"></div>
         </div>
       </div>
     </div>
-  </div>
+
+    <!-- STEP 3: Active analysis — 3-column full-viewport layout -->
+    <div id="tn-step-analysis" style="display:none">
+
+      <!-- Context strip -->
+      <div class="session-strip tn-strip">
+        <div class="ss-item"><div class="ss-item-label">Pair</div><div class="ss-item-val" id="tn-ctx-pair" style="color:var(--amber)">—</div></div>
+        <div class="divider-v"></div>
+        <div class="ss-item"><div class="ss-item-label">Session</div><div class="ss-item-val" id="tn-ctx-sess">—</div></div>
+        <div class="divider-v"></div>
+        <div class="ss-item"><div class="ss-item-label">Bias</div><div class="ss-item-val" id="tn-ctx-bias">—</div></div>
+        <div class="divider-v"></div>
+        <div class="ss-item"><div class="ss-item-label">Charts</div><div class="ss-item-val" id="tn-ctx-charts">1</div></div>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-sm btn-primary" id="tn-push-btn" onclick="pushTnToLog()" style="display:none">Push to Log →</button>
+          <button class="btn btn-sm" onclick="resetTnFlow()">New Analysis</button>
+        </div>
+      </div>
+
+      <!-- Verdict banner -->
+      <div class="verdict-banner" id="tn-verdict-banner"></div>
+
+      <!-- 3-column body: Charts | Checklist | AI Chat -->
+      <div class="tn-3col">
+
+        <!-- COL 1: Charts (biggest, scrollable) -->
+        <div class="tn-col-charts">
+          <div class="tn-col-hd">Charts <span id="tn-ctx-charts2" style="color:var(--amber)"></span></div>
+          <div id="tn-thumbs" class="tn-charts-scroll"></div>
+        </div>
+
+        <!-- COL 2: Checklist (compact, fits screen) -->
+        <div class="tn-col-chk">
+          <div class="tn-col-hd">Checklist
+            <span class="tn-chk-score" id="tn-score-num" style="color:var(--text3)">0/16</span>
+          </div>
+          <div class="mini-score-bar" id="tn-score-bar" style="margin-bottom:10px">
+            <div class="mini-score-track"><div class="mini-score-fill" id="tn-score-fill" style="width:0%;background:var(--red2)"></div></div>
+            <div class="mini-score-verdict" id="tn-score-verdict" style="color:var(--text3)">Awaiting AI</div>
+          </div>
+          <div id="tn-chk" class="tn-chk-list">
+            <div class="tn-chk-ph-hd p1-hd">P1 · Location <span>ALL 3</span></div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>S/R within 10–15 pips</div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>S/R confirmed 2+ touches</div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Higher TF agrees</div>
+            <div class="tn-chk-ph-hd p2-hd">P2 · Stop Hunt <span>ANY 1</span></div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Wick hunt</div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Full candle hunt</div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Fake breakout</div>
+            <div class="tn-chk-ph-hd p3-hd">P3 · Pattern <span>ANY 1</span></div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Pin bar / hammer</div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Engulfing candle</div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Inside bar</div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Double top / bottom</div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>S/R flip retest</div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>Flag continuation</div>
+            <div class="tn-chk-ph-hd p4-hd">P4 · Session &amp; Risk <span>ALL 4</span></div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>No news within 30 min</div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>London / NY session</div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>R:R ≥ 1:2</div>
+            <div class="mini-item tn-ci" onclick="toggleChk(this,'tn')"><div class="mini-chk-box">✓</div>&lt; 2 losses today</div>
+          </div>
+        </div>
+
+        <!-- COL 3: AI Chat -->
+        <div class="tn-col-ai">
+          <div class="tn-col-hd">
+            <div class="ai-dot" id="tn-ai-dot"></div>
+            EDGE AI <span style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-left:4px">LIVE ANALYSIS</span>
+          </div>
+          <div class="ai-messages tn-ai-msgs" id="tn-ai-msgs"></div>
+          <div class="ai-status" id="tn-ai-status"></div>
+          <div class="ai-panel-input">
+            <button class="tn-attach-btn" onclick="document.getElementById('tn-attach-input').click()" title="Attach chart">📎</button>
+            <input type="file" id="tn-attach-input" accept="image/*" style="display:none" onchange="handleTnAttach(this)">
+            <textarea class="form-input" id="tn-chat-input" placeholder="Reply · Ctrl+V to paste a chart" rows="2" style="min-height:0;resize:none" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendTnMsg();}"></textarea>
+            <button class="btn btn-sm btn-primary" onclick="sendTnMsg()">Send</button>
+          </div>
+        </div>
+
+      </div><!-- end tn-3col -->
+    </div><!-- end tn-step-analysis -->
+
+  </div><!-- end tab-screenshot -->
 
   <!-- TAB B: MT5 -->
   <div class="tab-content" id="tab-mt5">
@@ -815,6 +1017,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="env.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

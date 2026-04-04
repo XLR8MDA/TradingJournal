@@ -15,5 +15,6 @@ docs/EDGE_Project_Brief.docx
 .DS_Store
 Thumbs.db
 
-# Local runtime environment
+# Local runtime environment — never commit secrets
 .env
+env.js

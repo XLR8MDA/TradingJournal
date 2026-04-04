@@ -12,7 +12,7 @@ let settings   = Store.get('edge_settings', {});
 
 const EDGE_SYNC_VERSION = 1;
 const EDGE_CLIENT_NAME  = 'edge-journal-web';
-const EDGE_ENV = {};
+const EDGE_ENV = window.EDGE_ENV ? { ...window.EDGE_ENV } : {};
 
 async function loadRuntimeEnv() {
   try {
@@ -38,13 +38,33 @@ async function loadRuntimeEnv() {
 
 function normalizeSettings(raw = {}) {
   const normalized = { ...raw };
-  const envUrl = EDGE_ENV.EDGE_APPS_SCRIPT_URL || '';
+  const envUrl = EDGE_ENV.EDGE_APPS_SCRIPT_URL || EDGE_ENV.APPS_SCRIPT_URL || '';
+  const envGroqKey = EDGE_ENV.EDGE_GROQ_API_KEY || EDGE_ENV.GROQ_API_KEY || '';
   const legacyUrl = raw.appsScriptUrl || raw.sheetsUrl || raw.driveUrl || envUrl;
   normalized.appsScriptUrl = typeof legacyUrl === 'string' ? legacyUrl.trim() : '';
   normalized.sheetsUrl = typeof raw.sheetsUrl === 'string' ? raw.sheetsUrl.trim() : '';
   normalized.driveUrl = typeof raw.driveUrl === 'string' ? raw.driveUrl.trim() : '';
-  normalized.groqKey = typeof raw.groqKey === 'string' ? raw.groqKey.trim() : '';
+  const resolvedGroqKey = raw.groqKey || envGroqKey;
+  normalized.groqKey = typeof resolvedGroqKey === 'string' ? resolvedGroqKey.trim() : '';
   return normalized;
+}
+
+function hydrateSettingsFromEnv() {
+  const envUrl = EDGE_ENV.EDGE_APPS_SCRIPT_URL || EDGE_ENV.APPS_SCRIPT_URL || '';
+  const envGroqKey = EDGE_ENV.EDGE_GROQ_API_KEY || EDGE_ENV.GROQ_API_KEY || '';
+  let changed = false;
+
+  if (!settings.appsScriptUrl && envUrl) {
+    settings.appsScriptUrl = envUrl.trim();
+    changed = true;
+  }
+
+  if (!settings.groqKey && envGroqKey) {
+    settings.groqKey = envGroqKey.trim();
+    changed = true;
+  }
+
+  if (changed) saveSettings();
 }
 
 settings = normalizeSettings(settings);
@@ -56,37 +76,138 @@ function saveSettings()  {
   Store.set('edge_settings', settings);
 }
 
-// ── MOBILE SIDEBAR ───────────────────────────────────
-function toggleSidebar() {
-  const sidebar  = document.getElementById('sidebar');
+// ── TOP NAV ──────────────────────────────────────────
+function toggleNavGroup(id) {
+  const group = document.getElementById(id);
+  if (!group) return;
+  const isOpen = group.classList.contains('open');
+  // Close all groups first
+  document.querySelectorAll('.nav-group').forEach(g => g.classList.remove('open'));
+  if (!isOpen) {
+    group.classList.add('open');
+    document.getElementById('backdrop').classList.add('show');
+  } else {
+    document.getElementById('backdrop').classList.remove('show');
+  }
+}
+
+function toggleMobileMenu() {
+  const menu     = document.getElementById('mobile-menu');
   const backdrop = document.getElementById('backdrop');
-  const isOpen   = sidebar.classList.contains('open');
-  sidebar.classList.toggle('open', !isOpen);
+  const isOpen   = menu.classList.contains('open');
+  menu.classList.toggle('open', !isOpen);
   backdrop.classList.toggle('show', !isOpen);
   document.body.style.overflow = isOpen ? '' : 'hidden';
 }
-function closeSidebar() {
-  document.getElementById('sidebar').classList.remove('open');
+
+function closeAllNav() {
+  document.querySelectorAll('.nav-group').forEach(g => g.classList.remove('open'));
+  document.getElementById('mobile-menu').classList.remove('open');
   document.getElementById('backdrop').classList.remove('show');
   document.body.style.overflow = '';
 }
 
-// ── NAV ──────────────────────────────────────────────
-function nav(id, el) {
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-  if (el) el.classList.add('active');
-  window.scrollTo(0, 0);
-  closeSidebar();
+// Keep legacy aliases so any old refs don't break
+function toggleSidebar() { toggleMobileMenu(); }
+function closeSidebar()   { closeAllNav(); }
 
-  // Run section-specific init
+function nav(id, el) {
+  // Show the target section
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  const target = document.getElementById(id);
+  if (target) target.classList.add('active');
+
+  // Update active state across all nav elements
+  document.querySelectorAll('.nav-group-btn, .nav-dd-item, .mob-item').forEach(n => n.classList.remove('active'));
+  if (el) el.classList.add('active');
+
+  // Also highlight parent group btn when a dropdown item is clicked
+  if (el) {
+    const parentGroup = el.closest('.nav-group');
+    if (parentGroup) {
+      const btn = parentGroup.querySelector('.nav-group-btn');
+      if (btn) btn.classList.add('active');
+    }
+    // Mirror on mobile menu
+    document.querySelectorAll('.mob-item').forEach(m => {
+      const oc = m.getAttribute('onclick') || '';
+      if (oc.includes(`'${id}'`)) m.classList.add('active');
+    });
+  }
+
+  window.scrollTo(0, 0);
+  closeAllNav();
+
   if (id === 'backtest-hub')  initBacktestHub();
   if (id === 'gold')          renderPairPerf('XAU/USD', 'gold-perf');
   if (id === 'btc')           renderPairPerf('BTC/USD', 'btc-perf');
   if (id === 'eurusd')        renderPairPerf('EUR/USD', 'eurusd-perf');
   if (id === 'live-history')  renderLiveHistory();
   if (id === 'dashboard')     updateDashboard();
+}
+
+// ── MINI CHECKLIST ────────────────────────────────────
+function toggleChk(el, ctx) {
+  el.classList.toggle('checked');
+  updateMiniScore(ctx);
+}
+
+function updateMiniScore(ctx) {
+  const container = document.getElementById(ctx + '-chk');
+  if (!container) return;
+  const items   = container.querySelectorAll('.mini-item');
+  const all     = [...items];
+  const checked = all.filter(i => i.classList.contains('checked')).length;
+
+  // Gate logic: P1=items 0-2 (all), P2=3-5 (any), P3=6-11 (any), P4=12-15 (all)
+  const p1 = [0,1,2].every(i => all[i]?.classList.contains('checked'));
+  const p2 = [3,4,5].some(i  => all[i]?.classList.contains('checked'));
+  const p3 = [6,7,8,9,10,11].some(i => all[i]?.classList.contains('checked'));
+  const p4 = [12,13,14,15].every(i  => all[i]?.classList.contains('checked'));
+
+  const fill    = document.getElementById(ctx + '-score-fill');
+  const num     = document.getElementById(ctx + '-score-num');
+  const verdict = document.getElementById(ctx + '-score-verdict');
+
+  if (fill) fill.style.width = Math.round(checked / 16 * 100) + '%';
+
+  let color, text;
+  if (checked >= 12 && p1 && p2 && p3 && p4) {
+    color = 'var(--green)'; text = 'All gates passed — ready to trade';
+    if (fill) fill.style.background = 'var(--green2)';
+  } else if (checked >= 10 && p1 && p2 && p3) {
+    color = 'var(--amber)'; text = 'Marginal — reduce size to 0.5%';
+    if (fill) fill.style.background = 'var(--amber2)';
+  } else {
+    color = 'var(--red)'; text = checked < 10 ? 'Not ready — keep marking' : 'Gate failed — check phases';
+    if (fill) fill.style.background = 'var(--red2)';
+  }
+  if (num)     { num.textContent = checked + '/16'; num.style.color = color; }
+  if (verdict) { verdict.textContent = text; verdict.style.color = color; }
+
+  // Sync hidden score input (Backtest uses it for save)
+  const scoreInput = document.getElementById(ctx + '-user-score');
+  if (scoreInput) scoreInput.value = checked;
+
+  // Enable/disable analyze button (Trade Now)
+  if (ctx === 'tn') {
+    const btn = document.getElementById('tn-analyze-btn');
+    const hasImg = document.getElementById('tn-image-data')?.value;
+    if (btn) btn.disabled = !hasImg;
+  }
+}
+
+function getMiniChecklist(ctx) {
+  const container = document.getElementById(ctx + '-chk');
+  if (!container) return '';
+  const phases = ['P1 Location', 'P2 Stop Hunt', 'P3 Pattern', 'P4 Session/Risk'];
+  const items   = [...container.querySelectorAll('.mini-item')];
+  const groups  = [[0,1,2],[3,4,5],[6,7,8,9,10,11],[12,13,14,15]];
+  return groups.map((g, pi) =>
+    phases[pi] + ': ' + g.map(i =>
+      items[i] ? (items[i].classList.contains('checked') ? '✓' : '✗') + ' ' + items[i].textContent.trim() : ''
+    ).join(' | ')
+  ).join('\n');
 }
 
 // ── CHECKLIST ────────────────────────────────────────
@@ -436,7 +557,19 @@ function updateSidebar() {
   const sbWr = document.getElementById('sb-wr');
   const sbR  = document.getElementById('sb-r');
   if (sbWr) { sbWr.textContent = wr+'%'; sbWr.style.color = wr>=65?'var(--green)':wr>=40?'var(--amber)':'var(--red)'; }
-  if (sbR)  { sbR.textContent = (totalR>=0?'+':'')+totalR.toFixed(1)+'R'; }
+  if (sbR)  { sbR.textContent = (totalR>=0?'+':'')+totalR.toFixed(1)+'R'; sbR.style.color = totalR>=0?'var(--amber)':'var(--red)'; }
+
+  // Last 5 outcome pips
+  const pipsEl = document.getElementById('sb-outcomes');
+  if (pipsEl) {
+    const last5 = trades.slice(0, 5);
+    pipsEl.innerHTML = last5.map(t => {
+      const cls = t.out.startsWith('Win') ? 'w' : t.out === 'Loss' ? 'l' : 'p';
+      return `<div class="ss-pip ${cls}" title="${t.out} · ${t.inst || ''} ${t.date || ''}"></div>`;
+    }).join('') + (trades.length > 5
+      ? `<span style="font-size:9px;color:var(--text3);font-family:var(--mono);margin-left:4px">+${trades.length-5}</span>`
+      : '');
+  }
 }
 
 // ── BACKTEST HUB ─────────────────────────────────────
@@ -489,13 +622,14 @@ function startBhSession(pair) {
   resetBhForm();
   showBhSession();
   renderAiPanel('backtest');
+  showAiToggle();
 }
 
 function showBhSelect()   { document.getElementById('bh-select').style.display='block'; document.getElementById('bh-session').style.display='none'; }
 function showBhSession()  { document.getElementById('bh-select').style.display='none'; document.getElementById('bh-session').style.display='block'; }
 
 function resetBhForm() {
-  document.getElementById('bh-user-score').value  = '';
+  document.getElementById('bh-user-score').value   = '';
   document.getElementById('bh-user-verdict').value = 'valid';
   document.getElementById('bh-outcome').value      = 'Win (TP2)';
   document.getElementById('bh-notes').value        = '';
@@ -503,6 +637,11 @@ function resetBhForm() {
   bhSession.currentImage = null;
   const aiBtn = document.getElementById('bh-ai-btn');
   if (aiBtn) aiBtn.style.display = 'none';
+  // Hide and reset checklist
+  const bhChkWrap = document.getElementById('bh-chk-wrap');
+  if (bhChkWrap) bhChkWrap.style.display = 'none';
+  document.querySelectorAll('#bh-chk .mini-item').forEach(i => i.classList.remove('checked'));
+  updateMiniScore('bh');
   hideBhVerdicts();
 }
 
@@ -521,15 +660,14 @@ function runBhAiAnalysis() {
     return;
   }
 
-  const userScore   = document.getElementById('bh-user-score').value || '?';
-  const userVerdict = document.getElementById('bh-user-verdict').value;
+  const userVerdict  = document.getElementById('bh-user-verdict').value;
 
-  appendAiMsg('user', `My call: ${userVerdict} · Score: ${userScore}/16`);
+  appendAiMsg('user', `My call: ${userVerdict}`);
   appendAiMsg('ai', 'Analyzing against the 16-point EDGE checklist…');
 
   const prompt = `You are EDGE, a strict backtest coaching AI for the Stop Hunt + Pattern Confluence strategy.
 
-Trader self-assessment — Score: ${userScore}/16 · Call: ${userVerdict}
+Trader's initial call: ${userVerdict}
 
 Evaluate this chart screenshot against the full EDGE 16-point checklist. Be strict and educational. Walk through all 4 phases.
 
@@ -560,7 +698,15 @@ Respond ONLY in this exact JSON format (no extra text):
         `<strong>P2 Stop Hunt:</strong> ${json.p2_notes}<br>` +
         `<strong>P3 Pattern:</strong> ${json.p3_notes}<br>` +
         `<strong>P4 Session:</strong> ${json.p4_notes}<br><br>` +
-        `<em style="color:var(--blue)">${json.coaching}</em>`);
+        `<em style="color:var(--blue)">${json.coaching}</em><br><br>` +
+        `<span style="font-size:11px;color:var(--text3)">← Tick the checklist to record your self-assessment, then save the setup.</span>`);
+
+      // Auto-open AI drawer so user sees the analysis
+      toggleAiDrawer(true);
+
+      // Reveal checklist for self-assessment
+      const bhChkWrap = document.getElementById('bh-chk-wrap');
+      if (bhChkWrap) bhChkWrap.style.display = 'block';
 
       // Write AI result back onto the most recent setup for this pair
       const idx = backtests.findIndex(b => b.pair === bhPair && !b.aiScore);
@@ -658,6 +804,7 @@ async function saveBhSetup() {
 
 function endBhSession() {
   if (bhSession.setups.length && !confirm('End session? ' + bhSession.setups.length + ' setups saved.')) return;
+  hideAiToggle();
   showBhSelect();
   renderBhPairCards();
   bhPair = null;
@@ -673,6 +820,13 @@ function initBhUpload() {
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
   zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); handleBhFile(e.dataTransfer.files[0]); });
   input.addEventListener('change', () => handleBhFile(input.files[0]));
+  // Clipboard paste — Ctrl+V anywhere on the page while backtest session is active
+  zone._pasteHandler = e => {
+    if (!document.getElementById('bh-session') || document.getElementById('bh-session').style.display === 'none') return;
+    const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+    if (item) { e.preventDefault(); handleBhFile(item.getAsFile()); }
+  };
+  document.addEventListener('paste', zone._pasteHandler);
 }
 
 function handleBhFile(file) {
@@ -690,7 +844,69 @@ function handleBhFile(file) {
   reader.readAsDataURL(file);
 }
 
-// Screenshot upload — Trade Now
+// ── TRADE NOW — 3-STEP CONVERSATIONAL FLOW ───────────
+
+const TN_SYSTEM = `You are EDGE AI, a strict pre-trade analyst for the Stop Hunt + Pattern Confluence strategy.
+
+ASSESSMENT PROTOCOL — one phase at a time, never batch all phases in one message:
+
+━━ STEP 1: Assess P1 (Location) on the first chart ━━
+Check these 3 gates on the chart provided:
+  [a] Is price within 10–15 pips of a clearly defined S/R level?
+  [b] Has that S/R level been confirmed by 2+ prior touches?
+  [c] Does the higher timeframe structure agree with this level?
+After assessing P1, emit this JSON on its own line:
+{"phase":"p1","p1":[a,b,c]}
+Then:
+  → If ALL 3 pass: ask for the entry timeframe chart (15M preferred, or 5M) if not yet uploaded
+  → If ANY fail: tell the user P1 failed, explain why, and stop (no final verdict needed yet)
+
+━━ STEP 2: Assess P2 (Stop Hunt) on the entry TF chart ━━
+Check for at least ONE of:
+  [a] Wick hunt — candle wick spiked beyond S/R, closed back inside
+  [b] Full candle hunt — candle closed beyond S/R, next closed back inside
+  [c] Fake breakout — 2–4 candles pushed beyond S/R with no follow-through
+After assessing P2, emit:
+{"phase":"p2","p2":[a,b,c]}
+Then:
+  → If ANY 1 passes: move to P3
+  → If ALL fail: tell the user no stop hunt is visible, ask them to wait or check a different level
+
+━━ STEP 3: Assess P3 (Pattern) on the same entry TF chart ━━
+Check for at least ONE of:
+  [a] Pin bar / hammer / shooting star
+  [b] Bullish or bearish engulfing candle
+  [c] Inside bar coiled at the level
+  [d] Double top / bottom with stop hunt
+  [e] S/R flip retest
+  [f] Bull / bear flag continuation
+After assessing P3, emit:
+{"phase":"p3","p3":[a,b,c,d,e,f]}
+Then move to P4.
+
+━━ STEP 4: Assess P4 (Session & Risk) ━━
+  [a] No high-impact news within 30 min — ask the user if uncertain
+  [b] London or NY session timing — you can determine this from chart timestamps
+  [c] R:R ratio >= 1:2 — ask the user: "What is your planned entry, SL, and TP?"
+  [d] Fewer than 2 losses today — ask the user
+After you have answers, emit:
+{"phase":"p4","p4":[a,b,c,d]}
+
+━━ FINAL VERDICT ━━
+Only after all 4 phases are assessed, end your final message with this JSON on its own line:
+{"verdict":"GO","score":14,"direction":"long","sl":"66400","rr":"1:2.5","p1":[true,true,true],"p2":[false,true,false],"p3":[false,true,false,false,false,false],"p4":[true,true,true,false],"summary":"Clean P1+P2+P3 confluence at 66,412. NY session, R:R 1:2.5."}
+
+RULES:
+- Keep each message focused on ONE phase only
+- Do not jump ahead or summarise all phases in the first message
+- The user's bias is informational only — your assessment is independent
+- Be concise — 3–5 sentences per phase, then the JSON, then your next question`;
+
+let tnState = {
+  pair: '', tf: '', session: '', bias: 'none',
+  charts: [], history: [], analyzing: false, verdict: null
+};
+
 function initTnUpload() {
   const zone  = document.getElementById('tn-upload-zone');
   const input = document.getElementById('tn-file-input');
@@ -698,19 +914,310 @@ function initTnUpload() {
   zone.addEventListener('click', () => input.click());
   zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-  zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); handleTnFile(e.dataTransfer.files[0]); });
-  input.addEventListener('change', () => handleTnFile(input.files[0]));
+  zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); handleTnFirstFile(e.dataTransfer.files[0]); });
+  input.addEventListener('change', () => handleTnFirstFile(input.files[0]));
+  document.addEventListener('paste', e => {
+    const tn = document.getElementById('trade-now');
+    if (!tn || !tn.classList.contains('active')) return;
+    const item = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith('image/'));
+    if (!item) return;
+    e.preventDefault();
+    const step3 = document.getElementById('tn-step-analysis');
+    if (step3 && step3.style.display !== 'none') { handleTnAttach(null, item.getAsFile()); }
+    else { handleTnFirstFile(item.getAsFile()); }
+  });
 }
 
-function handleTnFile(file) {
+function handleTnFirstFile(file) {
   if (!file || !file.type.startsWith('image/')) return;
   const reader = new FileReader();
   reader.onload = e => {
-    document.getElementById('tn-preview').innerHTML = `<img src="${e.target.result}" alt="chart" style="max-width:100%;border-radius:6px">`;
-    document.getElementById('tn-analyze-btn').disabled = false;
-    document.getElementById('tn-image-data').value = e.target.result;
+    tnState.charts = [{ dataUrl: e.target.result, label: '—' }];
+    document.getElementById('tn-setup-img').src = e.target.result;
+    document.getElementById('tn-step-upload').style.display = 'none';
+    document.getElementById('tn-step-setup').style.display  = 'block';
+    window.scrollTo(0, 0);
   };
   reader.readAsDataURL(file);
+}
+
+function selectTnPair(el, pair) {
+  document.querySelectorAll('#tn-pair-grid .tn-pair-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  tnState.pair = pair;
+  checkTnSetupReady();
+}
+function showTnPairCustom() {
+  document.getElementById('tn-pair-custom').style.display = 'block';
+  document.getElementById('tn-pair-other-btn').style.display = 'none';
+  document.getElementById('tn-pair-custom').focus();
+}
+function setTnPairCustom(val) {
+  tnState.pair = val.trim();
+  document.querySelectorAll('#tn-pair-grid .tn-pair-btn').forEach(b => b.classList.remove('active'));
+  checkTnSetupReady();
+}
+function selectTnTf(el, tf) {
+  document.querySelectorAll('#tn-tf-row .tn-pill').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  tnState.tf = tf;
+  if (tnState.charts[0]) tnState.charts[0].label = tf;
+  checkTnSetupReady();
+}
+function selectTnSess(el, sess) {
+  const already = el.classList.contains('active');
+  document.querySelectorAll('#tn-sess-row .tn-pill').forEach(b => b.classList.remove('active'));
+  if (!already) { el.classList.add('active'); tnState.session = sess; }
+  else { tnState.session = ''; }
+}
+function selectTnBias(bias) {
+  ['long','short','none'].forEach(b => {
+    const el = document.getElementById('tn-bias-' + b);
+    if (el) el.classList.toggle('active', b === bias);
+  });
+  tnState.bias = bias;
+}
+function checkTnSetupReady() {
+  document.getElementById('tn-start-btn').disabled = !(tnState.pair && tnState.tf);
+}
+
+function startTnAnalysis() {
+  if (!tnState.pair || !tnState.tf) {
+    document.getElementById('tn-setup-err').textContent = 'Select a pair and timeframe to continue.';
+    return;
+  }
+  document.getElementById('tn-ctx-pair').textContent  = tnState.pair;
+  document.getElementById('tn-ctx-sess').textContent  = tnState.session || '—';
+  document.getElementById('tn-ctx-bias').textContent  = tnState.bias === 'none' ? '—' : tnState.bias;
+  document.getElementById('tn-ctx-charts').textContent = '1';
+  document.getElementById('tn-step-setup').style.display   = 'none';
+  document.getElementById('tn-step-analysis').style.display = 'block';
+  window.scrollTo(0, 0);
+  const dot = document.getElementById('tn-ai-dot');
+  if (dot) dot.className = 'ai-dot' + (settings.groqKey ? ' active' : '');
+  addTnThumb(tnState.charts[0].dataUrl, tnState.tf);
+  const ctx = `Pair: ${tnState.pair} | Timeframe: ${tnState.tf}${tnState.session ? ' | Session: ' + tnState.session : ''}${tnState.bias !== 'none' ? ' | My bias: ' + tnState.bias : ''}.
+Analyse this ${tnState.tf} chart against the EDGE strategy. Walk through each phase. Ask for more timeframes if needed.`;
+  tnState.history = [{ role: 'user', content: [
+    { type: 'text', text: ctx },
+    { type: 'image_url', image_url: { url: tnState.charts[0].dataUrl } }
+  ]}];
+  appendTnMsg('user', `${tnState.pair} · ${tnState.tf}${tnState.session ? ' · ' + tnState.session : ''}${tnState.bias !== 'none' ? ' · ' + tnState.bias : ''}`);
+  if (!settings.groqKey) {
+    appendTnMsg('ai', 'No Groq API key. Go to <a href="#" onclick="nav(\'settings\',null);return false">Settings</a> to add your key.');
+    return;
+  }
+  appendTnMsg('ai', 'Analysing ' + tnState.pair + ' ' + tnState.tf + ' chart…');
+  callTnGroq(reply => { removeTnTyping(); appendTnMsg('ai', reply); processTnAiResponse(reply); });
+}
+
+function handleTnAttach(inputEl, fileOverride) {
+  const file = fileOverride || (inputEl && inputEl.files[0]);
+  if (!file || !file.type.startsWith('image/')) return;
+  if (tnState.charts.length >= 4) {
+    appendTnMsg('ai', 'Max 4 charts per analysis. Start a new analysis to continue.');
+    if (inputEl) inputEl.value = '';
+    return;
+  }
+  if (file.size > 4 * 1024 * 1024 * 1.37) {
+    appendTnMsg('ai', 'Image too large (4MB Groq limit). Please compress and try again.');
+    if (inputEl) inputEl.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const dataUrl = e.target.result;
+    const idx = tnState.charts.length + 1;
+    tnState.charts.push({ dataUrl, label: 'Chart ' + idx });
+    document.getElementById('tn-ctx-charts').textContent = tnState.charts.length;
+    addTnThumb(dataUrl, 'Chart ' + idx);
+    appendTnMsgImage(dataUrl);
+    tnState.history.push({ role: 'user', content: [
+      { type: 'text', text: 'Here is chart ' + idx + '. Please continue your analysis.' },
+      { type: 'image_url', image_url: { url: dataUrl } }
+    ]});
+    if (!settings.groqKey) return;
+    appendTnMsg('ai', 'Analysing chart ' + idx + '…');
+    callTnGroq(reply => { removeTnTyping(); appendTnMsg('ai', reply); processTnAiResponse(reply); });
+  };
+  reader.readAsDataURL(file);
+  if (inputEl) inputEl.value = '';
+}
+
+function sendTnMsg() {
+  const input = document.getElementById('tn-chat-input');
+  if (!input || !input.value.trim()) return;
+  const msg = input.value.trim();
+  input.value = '';
+  appendTnMsg('user', msg);
+  tnState.history.push({ role: 'user', content: msg });
+  if (!settings.groqKey) { appendTnMsg('ai', 'No API key.'); return; }
+  appendTnMsg('ai', 'Thinking…');
+  callTnGroq(reply => { removeTnTyping(); appendTnMsg('ai', reply); processTnAiResponse(reply); });
+}
+
+async function callTnGroq(callback) {
+  if (tnState.analyzing) return;
+  tnState.analyzing = true;
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + settings.groqKey },
+      body: JSON.stringify({
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+        messages: [{ role: 'system', content: TN_SYSTEM }, ...tnState.history],
+        max_tokens: 1200
+      })
+    });
+    const data = await res.json();
+    if (data.error) { callback('Error: ' + (data.error.message || JSON.stringify(data.error))); return; }
+    const reply = data.choices?.[0]?.message?.content || 'No response.';
+    tnState.history.push({ role: 'assistant', content: reply });
+    callback(reply);
+  } catch(e) { callback('Network error: ' + e.message); }
+  finally { tnState.analyzing = false; }
+}
+
+function preTnChecklist(j) {
+  const items = document.querySelectorAll('#tn-chk .mini-item');
+  if (!items.length) return;
+  // Map phase arrays onto items: P1[0-2], P2[3-5], P3[6-11], P4[12-15]
+  const flat = [
+    ...(j.p1 || [false,false,false]),
+    ...(j.p2 || [false,false,false]),
+    ...(j.p3 || [false,false,false,false,false,false]),
+    ...(j.p4 || [false,false,false,false])
+  ];
+  items.forEach((el, i) => {
+    el.classList.toggle('checked', !!flat[i]);
+  });
+  updateMiniScore('tn');
+}
+
+function preTnChecklistPhase(j) {
+  const items = [...document.querySelectorAll('#tn-chk .mini-item')];
+  const map = { p1:[0,1,2], p2:[3,4,5], p3:[6,7,8,9,10,11], p4:[12,13,14,15] };
+  const key = Object.keys(j).find(k => map[k]);
+  if (!key) return;
+  map[key].forEach((idx, i) => items[idx]?.classList.toggle('checked', !!j[key][i]));
+  updateMiniScore('tn');
+}
+
+function processTnAiResponse(text) {
+  // Handle partial phase JSONs emitted one phase at a time
+  const partialRe = /\{"phase":"(p[1-4])","p[1-4]":\[[^\]]*\]\}/g;
+  let m;
+  while ((m = partialRe.exec(text)) !== null) {
+    try { preTnChecklistPhase(JSON.parse(m[0])); } catch { /* ignore */ }
+  }
+  // Handle final verdict
+  processTnVerdict(text);
+}
+
+function processTnVerdict(text) {
+  const match = text.match(/\{[^{}]*"verdict"[^{}]*\}/);
+  if (!match) return;
+  try {
+    const j = JSON.parse(match[0]);
+    tnState.verdict = j;
+    preTnChecklist(j);
+    const vtype = j.verdict === 'GO' ? 'go' : j.verdict === 'STOP' ? 'stop' : 'marginal';
+    const icons  = { go: '✅', stop: '🚫', marginal: '⚠️' };
+    const dirStr = j.direction ? ' · ' + j.direction.toUpperCase() : '';
+    const banner = document.getElementById('tn-verdict-banner');
+    banner.className = `verdict-banner ${vtype} show`;
+    banner.innerHTML = `<div class="verdict-icon">${icons[vtype]}</div><div><div>${j.verdict}${dirStr} — ${j.score}/16 · SL: ${j.sl || '—'} · R:R: ${j.rr || '—'}</div><div class="verdict-detail">${j.summary || ''}</div></div>`;
+    if (vtype !== 'stop') {
+      const btn = document.getElementById('tn-push-btn');
+      if (btn) { btn.style.display = 'inline-flex'; btn.dataset.score = j.score; btn.dataset.dir = j.direction || ''; }
+    }
+    banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  } catch { /* not valid JSON, ignore */ }
+}
+
+function appendTnMsg(from, text) {
+  const msgs = document.getElementById('tn-ai-msgs');
+  if (!msgs) return;
+  const isAi = from === 'ai';
+  const div  = document.createElement('div');
+  div.className = 'ai-msg' + (isAi ? '' : ' user');
+  div.innerHTML = `<div class="ai-avatar">${isAi ? 'AI' : 'ME'}</div><div class="ai-bubble">${renderAiMessage(text)}</div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+function appendTnMsgImage(dataUrl) {
+  const msgs = document.getElementById('tn-ai-msgs');
+  if (!msgs) return;
+  const div = document.createElement('div');
+  div.className = 'ai-msg user';
+  div.innerHTML = `<div class="ai-avatar">ME</div><div class="ai-bubble"><img src="${dataUrl}" class="chat-chart" alt="chart"></div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+function removeTnTyping() {
+  const msgs = document.getElementById('tn-ai-msgs');
+  if (!msgs) return;
+  const bubbles = msgs.querySelectorAll('.ai-msg:not(.user) .ai-bubble');
+  const last = bubbles[bubbles.length - 1];
+  if (last && /^(Analysing|Thinking).*[…]$/.test(last.textContent.trim())) {
+    last.closest('.ai-msg').remove();
+  }
+}
+function addTnThumb(dataUrl, label) {
+  const container = document.getElementById('tn-thumbs');
+  if (!container) return;
+  const div = document.createElement('div');
+  div.className = 'tn-thumb';
+  div.innerHTML = `<img src="${dataUrl}" alt="${label}"><div class="tn-thumb-label">${label}</div>`;
+  container.appendChild(div);
+}
+function resetTnFlow() {
+  tnState = { pair: '', tf: '', session: '', bias: 'none', charts: [], history: [], analyzing: false, verdict: null };
+  ['tn-step-analysis','tn-step-setup'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = 'none'; });
+  document.getElementById('tn-step-upload').style.display = 'block';
+  document.getElementById('tn-preview').innerHTML = `<div class="upload-icon">📷</div><div class="upload-label">Drop chart here</div><div class="upload-hint">click to browse · <kbd>Ctrl+V</kbd> to paste from TradingView</div>`;
+  document.getElementById('tn-file-input').value = '';
+  const thumbs = document.getElementById('tn-thumbs');   if (thumbs) thumbs.innerHTML = '';
+  const msgs   = document.getElementById('tn-ai-msgs');  if (msgs) msgs.innerHTML = '';
+  const banner = document.getElementById('tn-verdict-banner'); if (banner) banner.className = 'verdict-banner';
+  document.querySelectorAll('#tn-chk .mini-item').forEach(i => i.classList.remove('checked'));
+  updateMiniScore('tn');
+  const push   = document.getElementById('tn-push-btn'); if (push) push.style.display = 'none';
+  window.scrollTo(0, 0);
+}
+function pushTnToLog() {
+  const dir   = tnState.verdict?.direction || '';
+  const score = tnState.verdict?.score || '';
+  const lInst = document.getElementById('l-inst');
+  const lDir  = document.getElementById('l-dir');
+  const lScr  = document.getElementById('l-score');
+  if (lInst)  lInst.value  = tnState.pair;
+  if (lDir)   lDir.value   = dir === 'long' ? 'Long' : dir === 'short' ? 'Short' : '';
+  if (lScr)   lScr.value   = score;
+  nav('logger', document.querySelector('[onclick*="logger"]'));
+}
+
+// ── AI DRAWER TOGGLE ─────────────────────────────────
+function toggleAiDrawer(forceOpen) {
+  const panel  = document.getElementById('ai-panel');
+  const toggle = document.getElementById('ai-drawer-toggle');
+  const badge  = document.getElementById('ai-badge');
+  if (!panel) return;
+  const shouldOpen = forceOpen !== undefined ? forceOpen : !panel.classList.contains('open');
+  panel.classList.toggle('open', shouldOpen);
+  if (toggle) toggle.classList.toggle('panel-open', shouldOpen);
+  if (badge && shouldOpen) badge.style.display = 'none';
+}
+
+function showAiToggle() {
+  const toggle = document.getElementById('ai-drawer-toggle');
+  if (toggle) toggle.style.display = 'flex';
+}
+
+function hideAiToggle() {
+  const toggle = document.getElementById('ai-drawer-toggle');
+  if (toggle) { toggle.style.display = 'none'; }
+  toggleAiDrawer(false); // close drawer when session ends
 }
 
 // ── AI PANEL ─────────────────────────────────────────
@@ -740,8 +1247,8 @@ function renderAiPanel(mode) {
   if (status) status.innerHTML = '';
   if (inputWrap) inputWrap.style.display = 'flex';
   appendAiMsg('ai', mode === 'backtest'
-    ? 'Ready. Upload a chart screenshot, give me your verdict first, then I\'ll run the full EDGE checklist analysis.'
-    : 'Ready. Upload your live chart screenshot, select the pair and direction, then hit Analyze. I\'ll run the full 16-point checklist and give you a GO or STOP verdict.');
+    ? 'Ready. Upload a chart screenshot and hit "Ask AI to Evaluate" — I\'ll run the full EDGE checklist analysis. The self-assessment checklist will appear after my review so you can tick it while we discuss.'
+    : 'Ready. Upload your live chart screenshot, select pair and direction, then hit Analyze. I\'ll run the full 16-point checklist and give you a GO or STOP verdict. The checklist will appear after so you can tick items as you review.');
 }
 
 function appendAiMsg(from, text) {
@@ -752,9 +1259,144 @@ function appendAiMsg(from, text) {
   div.className = 'ai-msg' + (isAi ? '' : ' user');
   div.innerHTML = `
     <div class="ai-avatar">${isAi ? 'AI' : 'ME'}</div>
-    <div class="ai-bubble">${text}</div>`;
+    <div class="ai-bubble">${renderAiMessage(text)}</div>`;
   msgs.appendChild(div);
   msgs.scrollTop = msgs.scrollHeight;
+  // Show red badge on toggle tab when drawer is closed and AI replies
+  if (isAi) {
+    const panel = document.getElementById('ai-panel');
+    const badge = document.getElementById('ai-badge');
+    if (panel && !panel.classList.contains('open') && badge) {
+      badge.style.display = 'block';
+    }
+  }
+}
+
+function renderAiMessage(text) {
+  if (!text) return '';
+  if (/<\/?[a-z][\s\S]*>/i.test(text)) return text;
+  return renderMarkdown(text);
+}
+
+function renderMarkdown(text) {
+  const lines = String(text).replace(/\r\n/g, '\n').split('\n');
+  const html = [];
+  let paragraph = [];
+  let listType = null;
+  let inCode = false;
+  let codeLines = [];
+
+  function flushParagraph() {
+    if (!paragraph.length) return;
+    html.push('<p>' + renderInlineMarkdown(paragraph.join('<br>')) + '</p>');
+    paragraph = [];
+  }
+
+  function closeList() {
+    if (!listType) return;
+    html.push(listType === 'ol' ? '</ol>' : '</ul>');
+    listType = null;
+  }
+
+  function flushCode() {
+    if (!inCode) return;
+    html.push('<pre><code>' + escapeHtml(codeLines.join('\n')) + '</code></pre>');
+    inCode = false;
+    codeLines = [];
+  }
+
+  lines.forEach(line => {
+    if (line.trim().startsWith('```')) {
+      flushParagraph();
+      closeList();
+      if (inCode) {
+        flushCode();
+      } else {
+        inCode = true;
+      }
+      return;
+    }
+
+    if (inCode) {
+      codeLines.push(line);
+      return;
+    }
+
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushParagraph();
+      closeList();
+      return;
+    }
+
+    const heading = trimmed.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      closeList();
+      const level = heading[1].length;
+      html.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+      return;
+    }
+
+    const quote = trimmed.match(/^>\s?(.*)$/);
+    if (quote) {
+      flushParagraph();
+      closeList();
+      html.push('<blockquote>' + renderInlineMarkdown(quote[1]) + '</blockquote>');
+      return;
+    }
+
+    const ordered = trimmed.match(/^\d+\.\s+(.+)$/);
+    if (ordered) {
+      flushParagraph();
+      if (listType !== 'ol') {
+        closeList();
+        listType = 'ol';
+        html.push('<ol>');
+      }
+      html.push('<li>' + renderInlineMarkdown(ordered[1]) + '</li>');
+      return;
+    }
+
+    const unordered = trimmed.match(/^[-*]\s+(.+)$/);
+    if (unordered) {
+      flushParagraph();
+      if (listType !== 'ul') {
+        closeList();
+        listType = 'ul';
+        html.push('<ul>');
+      }
+      html.push('<li>' + renderInlineMarkdown(unordered[1]) + '</li>');
+      return;
+    }
+
+    closeList();
+    paragraph.push(escapeHtml(trimmed));
+  });
+
+  flushParagraph();
+  closeList();
+  flushCode();
+  return html.join('');
+}
+
+function renderInlineMarkdown(text) {
+  return String(text)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+    .replace(/(^|[\s(])\*([^*]+)\*(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>')
+    .replace(/(^|[\s(])_([^_]+)_(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function sendAiMsg() {
@@ -770,83 +1412,7 @@ function sendAiMsg() {
   callGroq([{ role: 'user', content: msg }], reply => appendAiMsg('ai', reply));
 }
 
-// ── TRADE NOW AI CHECK ────────────────────────────────
-function runTnAnalysis() {
-  const pair    = document.getElementById('tn-pair').value;
-  const session = document.getElementById('tn-session').value;
-  const dir     = document.getElementById('tn-dir').value;
-  const imgData = document.getElementById('tn-image-data').value;
-  const banner  = document.getElementById('tn-verdict-banner');
 
-  if (!imgData) { alert('Please upload a chart screenshot first.'); return; }
-
-  const btn = document.getElementById('tn-analyze-btn');
-  btn.textContent = 'Analyzing...';
-  btn.disabled = true;
-
-  if (!settings.groqKey) {
-    setTimeout(() => {
-      btn.textContent = 'Analyze Chart';
-      btn.disabled = false;
-      banner.className = 'verdict-banner marginal show';
-      banner.innerHTML = `<div class="verdict-icon">⚙</div><div><div>AI not active — no Groq API key set</div><div class="verdict-detail">Go to Settings and enter your Groq API key to enable AI analysis.</div></div>`;
-    }, 400);
-    return;
-  }
-
-  const prompt = `You are EDGE, a strict trading rules enforcer for the Stop Hunt + Pattern Confluence strategy.
-
-Instrument: ${pair} | Session: ${session} | Direction considered: ${dir}
-
-Evaluate this chart against the 16-point EDGE checklist. Be strict. Respond in this exact JSON format:
-{
-  "score": <0-16>,
-  "p1_pass": <true/false>,
-  "p2_pass": <true/false>,
-  "p3_pass": <true/false>,
-  "p4_pass": <true/false>,
-  "verdict": "GO" | "STOP" | "MARGINAL",
-  "reason": "<one sentence>",
-  "sl_suggestion": "<price or pip level>",
-  "rr_estimate": "<e.g. 1:2.8>",
-  "details": "<2-3 sentences of key observations>"
-}`;
-
-  callGroqVision(prompt, imgData, result => {
-    btn.textContent = 'Analyze Chart';
-    btn.disabled = false;
-    try {
-      const json  = JSON.parse(result.match(/\{[\s\S]*\}/)[0]);
-      const vtype = json.verdict === 'GO' ? 'go' : json.verdict === 'STOP' ? 'stop' : 'marginal';
-      const icons = { go: '✅', stop: '🚫', marginal: '⚠️' };
-      banner.className = `verdict-banner ${vtype} show`;
-      banner.innerHTML = `
-        <div class="verdict-icon">${icons[vtype]}</div>
-        <div>
-          <div>${json.verdict} — Score ${json.score}/16 · ${json.reason}</div>
-          <div class="verdict-detail">SL: ${json.sl_suggestion} · R:R est. ${json.rr_estimate} · P1:${json.p1_pass?'✓':'✗'} P2:${json.p2_pass?'✓':'✗'} P3:${json.p3_pass?'✓':'✗'} P4:${json.p4_pass?'✓':'✗'}</div>
-          <div style="font-size:12px;color:var(--text2);margin-top:6px">${json.details}</div>
-        </div>`;
-      // Show push-to-log button
-      document.getElementById('tn-push-btn').style.display = 'inline-flex';
-      document.getElementById('tn-push-btn').dataset.score = json.score;
-    } catch {
-      banner.className = 'verdict-banner marginal show';
-      banner.innerHTML = `<div class="verdict-icon">⚠️</div><div><div>Could not parse AI response.</div><div class="verdict-detail">${result.slice(0,200)}</div></div>`;
-    }
-  });
-}
-
-function pushTnToLog() {
-  const pair    = document.getElementById('tn-pair').value;
-  const dir     = document.getElementById('tn-dir').value;
-  const score   = document.getElementById('tn-push-btn').dataset.score;
-  // Pre-fill the log form and navigate
-  document.getElementById('l-inst').value  = pair;
-  document.getElementById('l-dir').value   = dir;
-  document.getElementById('l-score').value = score || '';
-  nav('logger', document.querySelector('[onclick*="logger"]'));
-}
 
 // ── PAIR PERFORMANCE PAGES ───────────────────────────
 function renderPairPerf(pair, containerId) {
@@ -1253,7 +1819,7 @@ async function callGroq(messages, callback) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + settings.groqKey },
       body: JSON.stringify({
-        model: 'meta-llama/llama-4-maverick-17b-128e-instruct-fp8',
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
         messages: [
           { role: 'system', content: 'You are EDGE AI, a strict trading coach for the Stop Hunt + Pattern Confluence strategy. Be concise, decisive, and always reference the 16-point checklist.' },
           ...messages
@@ -1268,12 +1834,17 @@ async function callGroq(messages, callback) {
 
 async function callGroqVision(prompt, imageData, callback) {
   if (!settings.groqKey) { callback('No API key.'); return; }
+  // Groq base64 limit is 4MB — warn early rather than getting a cryptic 413
+  if (imageData && imageData.length > 4 * 1024 * 1024 * 1.37) { // base64 is ~37% larger than raw
+    callback('Image too large for Groq (4MB base64 limit). Please compress the screenshot and try again.');
+    return;
+  }
   try {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + settings.groqKey },
       body: JSON.stringify({
-        model: 'meta-llama/llama-4-maverick-17b-128e-instruct-fp8',
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
         messages: [{
           role: 'user',
           content: [
@@ -1313,6 +1884,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (dateEl) dateEl.value = today();
 
   await loadRuntimeEnv();
+  settings = normalizeSettings(settings);
+  hydrateSettingsFromEnv();
   initBhUpload();
   initTnUpload();
   loadSettings();
