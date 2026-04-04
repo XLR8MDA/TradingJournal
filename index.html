@@ -115,6 +115,12 @@
   </div>
 
   <div class="card">
+    <div class="card-title">Monthly P&amp;L <span style="font-size:11px;font-weight:400;color:var(--text3);font-family:var(--mono)">net R per month</span></div>
+    <canvas id="monthly-chart" height="120" style="display:none"></canvas>
+    <div id="monthly-empty" style="text-align:center;padding:20px 0;font-size:13px;color:var(--text3);font-family:var(--mono)">Log trades across multiple months to see monthly P&amp;L.</div>
+  </div>
+
+  <div class="card">
     <div class="card-title">Strategy framework</div>
     <div class="info-row"><div class="row-n">1</div><div><span class="row-b">Location</span> — Only trade at defined S/R. Session H/L, prior swing, round numbers, Fib 50/61.8.</div></div>
     <div class="info-row"><div class="row-n">2</div><div><span class="row-b">Stop hunt</span> — Wait for a wick, full candle hunt, or fake breakout to sweep liquidity beyond S/R.</div></div>
@@ -202,8 +208,9 @@
             <label class="form-label">Notes</label>
             <textarea class="form-input" id="bh-notes" placeholder="Key observations, what you noticed, what you missed..."></textarea>
           </div>
-          <div style="display:flex;gap:10px;align-items:center">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
             <button class="btn btn-primary" onclick="saveBhSetup()">Save Setup</button>
+            <button class="btn btn-sm btn-primary" id="bh-ai-btn" onclick="runBhAiAnalysis()" style="display:none;background:rgba(96,165,250,.15);border-color:rgba(96,165,250,.3);color:var(--blue)">Ask AI to Evaluate ↗</button>
             <button class="btn btn-sm" onclick="resetBhForm()">Clear</button>
             <span id="bh-msg" style="font-size:12px;font-family:var(--mono)"></span>
           </div>
@@ -351,12 +358,52 @@
 
   <!-- TAB B: MT5 -->
   <div class="tab-content" id="tab-mt5">
-    <div class="coming-soon">
-      <div class="coming-soon-icon">📡</div>
-      <h3>Exness / MT5 Live Monitor</h3>
-      <p>Connect your Exness MT5 account for real-time trade monitoring.<br>
-      AI will alert you if a rule is broken — SL moved, oversized position, or daily loss limit hit.<br><br>
-      <span style="color:var(--amber);font-family:var(--mono);font-size:11px">Coming in a future phase — MT5 Expert Advisor integration</span></p>
+    <div class="page-header" style="margin-bottom:16px">
+      <div><div class="page-title" style="font-size:18px">Exness MT5 Live Monitor</div>
+      <div class="page-sub">Auto-log trades from your MT5 terminal · Demo or Live account</div></div>
+      <span class="page-badge" style="background:rgba(251,191,36,.1);color:var(--amber);border-color:rgba(251,191,36,.2)">SETUP REQUIRED</span>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-title">How it works</div>
+        <div class="info-row"><div class="row-n" style="color:var(--blue)">1</div><div>A small <strong style="color:var(--text)">Expert Advisor (EA)</strong> runs inside your MT5 terminal on Exness.</div></div>
+        <div class="info-row"><div class="row-n" style="color:var(--blue)">2</div><div>Every trade open/close/modify fires an event → EA sends it via HTTP to your Apps Script endpoint.</div></div>
+        <div class="info-row"><div class="row-n" style="color:var(--blue)">3</div><div>Apps Script logs the trade to Google Sheets → journal syncs on next load.</div></div>
+        <div class="info-row" style="border-bottom:none"><div class="row-n" style="color:var(--green)">✓</div><div>Works on <strong>demo and live</strong> accounts. No third-party service needed. Zero ongoing cost.</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Setup steps</div>
+        <div class="info-row"><div class="row-n" style="color:var(--amber)">1</div><div>Open MT5 → <strong>Tools → Options → Expert Advisors</strong> → tick <em>Allow WebRequest for listed URL</em> → paste your Apps Script URL.</div></div>
+        <div class="info-row"><div class="row-n" style="color:var(--amber)">2</div><div>Copy the EA file (<strong>EDGE_Journal.mq5</strong>) into your MT5 <em>Experts</em> folder and compile in MetaEditor.</div></div>
+        <div class="info-row"><div class="row-n" style="color:var(--amber)">3</div><div>Attach the EA to any chart (e.g. XAUUSD M15). Set the Apps Script URL in EA inputs.</div></div>
+        <div class="info-row" style="border-bottom:none"><div class="row-n" style="color:var(--green)">4</div><div>Open or close a trade — it will appear in Live History within seconds.</div></div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-title">EA payload sent per trade event</div>
+      <div style="font-family:var(--mono);font-size:12px;color:var(--text2);line-height:2;padding:8px 0">
+        symbol · direction (Buy/Sell) · entry price · SL · TP · volume · ticket ID · profit (on close) · event type (OPEN / CLOSE / MODIFY)
+      </div>
+      <div class="highlight" style="margin-top:8px">
+        <strong>AI alerts built for future release:</strong> SL moved after entry · Position size exceeds 1% risk · Daily loss limit reached · Trade opened without checklist score.
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px">
+      <div class="card-title">Connection status</div>
+      <div style="display:flex;align-items:center;gap:14px;padding:8px 0">
+        <button class="btn btn-sm" onclick="testMt5Connection()">Test Connection</button>
+        <div id="mt5-conn-status" style="font-size:12px;font-family:var(--mono);color:var(--text3)">Click to ping your Apps Script endpoint.</div>
+      </div>
+    </div>
+
+    <div style="margin-top:16px;padding:12px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--r2);font-size:12px;color:var(--text2);font-family:var(--mono);line-height:1.8">
+      EA file: <strong style="color:var(--amber)">apps-script/EDGE_Journal.mq5</strong> — ready to compile in MetaEditor.<br>
+      Copy to: <em style="color:var(--text3)">C:\Users\[you]\AppData\Roaming\MetaQuotes\Terminal\[id]\MQL5\Experts\</em><br>
+      Make sure your Apps Script URL is saved in <a href="#" onclick="nav('settings',null);return false" style="color:var(--blue)">Settings</a> before attaching the EA.
     </div>
   </div>
 </section>

@@ -14,3 +14,6 @@ docs/EDGE_Project_Brief.docx
 # OS
 .DS_Store
 Thumbs.db
+
+# Local runtime environment
+.env

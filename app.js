@@ -12,10 +12,34 @@ let settings   = Store.get('edge_settings', {});
 
 const EDGE_SYNC_VERSION = 1;
 const EDGE_CLIENT_NAME  = 'edge-journal-web';
+const EDGE_ENV = {};
+
+async function loadRuntimeEnv() {
+  try {
+    const res = await fetch('.env', { cache: 'no-store' });
+    if (!res.ok) return;
+    const text = await res.text();
+    text.split(/\r?\n/).forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return;
+      const idx = trimmed.indexOf('=');
+      if (idx === -1) return;
+      const key = trimmed.slice(0, idx).trim();
+      let value = trimmed.slice(idx + 1).trim();
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      EDGE_ENV[key] = value;
+    });
+  } catch {
+    // .env is optional for local/static deployments
+  }
+}
 
 function normalizeSettings(raw = {}) {
   const normalized = { ...raw };
-  const legacyUrl = raw.appsScriptUrl || raw.sheetsUrl || raw.driveUrl || '';
+  const envUrl = EDGE_ENV.EDGE_APPS_SCRIPT_URL || '';
+  const legacyUrl = raw.appsScriptUrl || raw.sheetsUrl || raw.driveUrl || envUrl;
   normalized.appsScriptUrl = typeof legacyUrl === 'string' ? legacyUrl.trim() : '';
   normalized.sheetsUrl = typeof raw.sheetsUrl === 'string' ? raw.sheetsUrl.trim() : '';
   normalized.driveUrl = typeof raw.driveUrl === 'string' ? raw.driveUrl.trim() : '';
@@ -334,6 +358,52 @@ function updateDashboard() {
     });
   }
 
+  // Monthly P&L chart
+  const monthCanvas = document.getElementById('monthly-chart');
+  const monthEmpty  = document.getElementById('monthly-empty');
+  if (monthCanvas) {
+    const monthMap = {};
+    trades.forEach(t => {
+      const m = t.date.slice(0, 7);
+      if (!monthMap[m]) monthMap[m] = 0;
+      if (t.out.startsWith('Win'))  monthMap[m] += (t.rr || 0);
+      else if (t.out === 'Loss')    monthMap[m] -= 1;
+      else if (t.out === 'Partial') monthMap[m] += ((t.rr || 0) * 0.5);
+    });
+    const months = Object.keys(monthMap).sort();
+    if (months.length >= 2) {
+      monthCanvas.style.display = 'block';
+      if (monthEmpty) monthEmpty.style.display = 'none';
+      const mData   = months.map(m => parseFloat(monthMap[m].toFixed(2)));
+      const mColors = mData.map(v => v >= 0 ? 'rgba(74,222,128,.7)' : 'rgba(248,113,113,.7)');
+      if (window._monthlyChart) window._monthlyChart.destroy();
+      window._monthlyChart = new Chart(monthCanvas, {
+        type: 'bar',
+        data: {
+          labels: months.map(m => {
+            const [y, mo] = m.split('-');
+            return new Date(+y, +mo - 1).toLocaleString('default', { month: 'short', year: '2-digit' });
+          }),
+          datasets: [{ data: mData, backgroundColor: mColors, borderRadius: 4, borderSkipped: false }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => (ctx.raw >= 0 ? '+' : '') + ctx.raw + 'R' } }
+          },
+          scales: {
+            x: { grid: { color: 'rgba(255,255,255,.04)' },
+                 ticks: { color: 'rgba(255,255,255,.35)', font: { family: 'Space Mono', size: 9 } }},
+            y: { grid: { color: 'rgba(255,255,255,.04)' },
+                 ticks: { color: 'rgba(255,255,255,.35)', font: { family: 'Space Mono', size: 9 },
+                          callback: v => (v >= 0 ? '+' : '') + v + 'R' }}
+          }
+        }
+      });
+    }
+  }
+
   // Backtest summary
   const btEl = document.getElementById('dash-bt-summary');
   if (btEl && backtests.length) {
@@ -431,6 +501,8 @@ function resetBhForm() {
   document.getElementById('bh-notes').value        = '';
   document.getElementById('bh-preview').innerHTML  = `<div class="upload-icon">📷</div><div class="upload-label">Drop chart screenshot here</div><div class="upload-hint">or click to browse · PNG, JPG, WEBP</div>`;
   bhSession.currentImage = null;
+  const aiBtn = document.getElementById('bh-ai-btn');
+  if (aiBtn) aiBtn.style.display = 'none';
   hideBhVerdicts();
 }
 
@@ -438,6 +510,94 @@ function hideBhVerdicts() {
   ['bh-verdict-go','bh-verdict-stop','bh-verdict-marginal'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.classList.remove('show'); }
+  });
+}
+
+// ── BACKTEST AI ANALYSIS ──────────────────────────────
+function runBhAiAnalysis() {
+  if (!bhSession.currentImage) { alert('Upload a chart screenshot first.'); return; }
+  if (!settings.groqKey) {
+    appendAiMsg('ai', 'No Groq API key set. Go to Settings → enter your key → come back and try again.');
+    return;
+  }
+
+  const userScore   = document.getElementById('bh-user-score').value || '?';
+  const userVerdict = document.getElementById('bh-user-verdict').value;
+
+  appendAiMsg('user', `My call: ${userVerdict} · Score: ${userScore}/16`);
+  appendAiMsg('ai', 'Analyzing against the 16-point EDGE checklist…');
+
+  const prompt = `You are EDGE, a strict backtest coaching AI for the Stop Hunt + Pattern Confluence strategy.
+
+Trader self-assessment — Score: ${userScore}/16 · Call: ${userVerdict}
+
+Evaluate this chart screenshot against the full EDGE 16-point checklist. Be strict and educational. Walk through all 4 phases.
+
+Respond ONLY in this exact JSON format (no extra text):
+{
+  "score": <0-16>,
+  "p1_pass": <true/false>,
+  "p2_pass": <true/false>,
+  "p3_pass": <true/false>,
+  "p4_pass": <true/false>,
+  "verdict": "valid" | "marginal" | "invalid",
+  "vs_trader": "agree" | "disagree" | "partial",
+  "p1_notes": "<Location gate — what you see on this chart>",
+  "p2_notes": "<Stop hunt gate — wick/fake breakout present or absent>",
+  "p3_notes": "<Pattern gate — pin bar/engulfing/etc. present or absent>",
+  "p4_notes": "<Session/timing — London/NY/Asian, overlap quality>",
+  "coaching": "<2-3 sentences: what the trader got right, what they missed, key learning>"
+}`;
+
+  callGroqVision(prompt, bhSession.currentImage, result => {
+    try {
+      const json   = JSON.parse(result.match(/\{[\s\S]*\}/)[0]);
+      const vc     = json.verdict === 'valid' ? 'var(--green)' : json.verdict === 'invalid' ? 'var(--red)' : 'var(--amber)';
+      const agree  = { agree: '✓ Agrees with you', disagree: '✗ Disagrees with you', partial: '~ Partial agreement' };
+
+      appendAiMsg('ai', `<strong style="color:${vc}">AI: ${json.verdict.toUpperCase()} — ${json.score}/16</strong> &nbsp;<span style="font-size:11px;color:var(--text3)">${agree[json.vs_trader] || ''}</span><br><br>` +
+        `<strong>P1 Location:</strong> ${json.p1_notes}<br>` +
+        `<strong>P2 Stop Hunt:</strong> ${json.p2_notes}<br>` +
+        `<strong>P3 Pattern:</strong> ${json.p3_notes}<br>` +
+        `<strong>P4 Session:</strong> ${json.p4_notes}<br><br>` +
+        `<em style="color:var(--blue)">${json.coaching}</em>`);
+
+      // Write AI result back onto the most recent setup for this pair
+      const idx = backtests.findIndex(b => b.pair === bhPair && !b.aiScore);
+      if (idx !== -1) {
+        backtests[idx].aiScore   = json.score;
+        backtests[idx].aiVerdict = json.verdict;
+        backtests[idx].aiNotes   = json.coaching;
+        saveBacktests();
+      }
+
+      checkBhCoachingSummary();
+    } catch {
+      appendAiMsg('ai', 'Could not parse AI response. Try again or check your Groq key.<br><small style="color:var(--text3)">' + result.slice(0, 200) + '</small>');
+    }
+  });
+}
+
+function checkBhCoachingSummary() {
+  const aiScored = bhSession.setups.filter(s => s.aiScore !== null && s.aiScore !== undefined);
+  if (!aiScored.length || aiScored.length % 5 !== 0) return;
+
+  const last5 = aiScored.slice(0, 5);
+  const summaryLines = last5.map((s, i) =>
+    `Setup ${i+1}: User ${s.userScore}/16 (${s.userVerdict}) | AI ${s.aiScore}/16 (${s.aiVerdict}) | Outcome: ${s.outcome || 'unknown'}`
+  ).join('\n');
+
+  appendAiMsg('ai', 'Running 5-setup coaching summary…');
+
+  const prompt = `You are EDGE, a trading coach reviewing a 5-setup backtest session on ${bhPair}.
+
+Session results:
+${summaryLines}
+
+Identify patterns in what the trader is getting right and consistently missing. Be specific to the EDGE strategy (Location, Stop Hunt, Pattern, Session). Give 3-4 sentences of actionable coaching. No fluff.`;
+
+  callGroq([{ role: 'user', content: prompt }], reply => {
+    appendAiMsg('ai', `<strong style="color:var(--amber)">5-Setup Coaching Summary</strong><br><br>${reply}`);
   });
 }
 
@@ -521,8 +681,10 @@ function handleBhFile(file) {
   reader.onload = e => {
     bhSession.currentImage = e.target.result;
     document.getElementById('bh-preview').innerHTML = `<img src="${e.target.result}" alt="chart">`;
+    const aiBtn = document.getElementById('bh-ai-btn');
+    if (aiBtn) aiBtn.style.display = 'inline-flex';
     if (settings.groqKey) {
-      appendAiMsg('ai', 'Chart uploaded. Give me your verdict first — is this a valid EDGE setup? Score it /16 and select Valid / Invalid / Marginal above, then I\'ll share my analysis.');
+      appendAiMsg('ai', 'Chart uploaded. Give me your verdict first — score it /16 and select Valid / Marginal / Invalid above, then hit "Ask AI to Evaluate" when ready.');
     }
   };
   reader.readAsDataURL(file);
@@ -995,6 +1157,31 @@ async function testBackendConnection() {
   return callEdgeBackend('health', { method: 'GET' });
 }
 
+async function testMt5Connection() {
+  const statusEl = document.getElementById('mt5-conn-status');
+  if (!statusEl) return;
+  if (!hasBackendConfig()) {
+    statusEl.style.color = 'var(--amber)';
+    statusEl.textContent = 'No Apps Script URL set. Go to Settings first.';
+    return;
+  }
+  statusEl.style.color = 'var(--text3)';
+  statusEl.textContent = 'Pinging…';
+  try {
+    const res = await testBackendConnection();
+    if (res && res.ok !== false) {
+      statusEl.style.color = 'var(--green)';
+      statusEl.textContent = 'Connected — Apps Script endpoint is live. EA can now log trades.';
+    } else {
+      statusEl.style.color = 'var(--amber)';
+      statusEl.textContent = 'Endpoint responded but returned an error: ' + (res.error || JSON.stringify(res));
+    }
+  } catch (e) {
+    statusEl.style.color = 'var(--red)';
+    statusEl.textContent = 'Connection failed: ' + e.message + '. Check URL in Settings.';
+  }
+}
+
 function normalizeTradeRecord(trade) {
   return {
     ...trade,
@@ -1125,6 +1312,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const dateEl = document.getElementById('l-date');
   if (dateEl) dateEl.value = today();
 
+  await loadRuntimeEnv();
   initBhUpload();
   initTnUpload();
   loadSettings();
