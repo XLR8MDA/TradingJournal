@@ -1,0 +1,1136 @@
+'use strict';
+
+// ── STORAGE ──────────────────────────────────────────
+const Store = {
+  get: (k, def=[]) => { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch { return def; } },
+  set: (k, v) => localStorage.setItem(k, JSON.stringify(v))
+};
+
+let trades     = Store.get('edge_trades', []);
+let backtests  = Store.get('edge_backtest', []);
+let settings   = Store.get('edge_settings', {});
+
+const EDGE_SYNC_VERSION = 1;
+const EDGE_CLIENT_NAME  = 'edge-journal-web';
+
+function normalizeSettings(raw = {}) {
+  const normalized = { ...raw };
+  const legacyUrl = raw.appsScriptUrl || raw.sheetsUrl || raw.driveUrl || '';
+  normalized.appsScriptUrl = typeof legacyUrl === 'string' ? legacyUrl.trim() : '';
+  normalized.sheetsUrl = typeof raw.sheetsUrl === 'string' ? raw.sheetsUrl.trim() : '';
+  normalized.driveUrl = typeof raw.driveUrl === 'string' ? raw.driveUrl.trim() : '';
+  normalized.groqKey = typeof raw.groqKey === 'string' ? raw.groqKey.trim() : '';
+  return normalized;
+}
+
+settings = normalizeSettings(settings);
+
+function saveTrades()    { Store.set('edge_trades', trades); }
+function saveBacktests() { Store.set('edge_backtest', backtests); }
+function saveSettings()  {
+  settings = normalizeSettings(settings);
+  Store.set('edge_settings', settings);
+}
+
+// ── MOBILE SIDEBAR ───────────────────────────────────
+function toggleSidebar() {
+  const sidebar  = document.getElementById('sidebar');
+  const backdrop = document.getElementById('backdrop');
+  const isOpen   = sidebar.classList.contains('open');
+  sidebar.classList.toggle('open', !isOpen);
+  backdrop.classList.toggle('show', !isOpen);
+  document.body.style.overflow = isOpen ? '' : 'hidden';
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('backdrop').classList.remove('show');
+  document.body.style.overflow = '';
+}
+
+// ── NAV ──────────────────────────────────────────────
+function nav(id, el) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if (el) el.classList.add('active');
+  window.scrollTo(0, 0);
+  closeSidebar();
+
+  // Run section-specific init
+  if (id === 'backtest-hub')  initBacktestHub();
+  if (id === 'gold')          renderPairPerf('XAU/USD', 'gold-perf');
+  if (id === 'btc')           renderPairPerf('BTC/USD', 'btc-perf');
+  if (id === 'eurusd')        renderPairPerf('EUR/USD', 'eurusd-perf');
+  if (id === 'live-history')  renderLiveHistory();
+  if (id === 'dashboard')     updateDashboard();
+}
+
+// ── CHECKLIST ────────────────────────────────────────
+function toggle(el) { el.classList.toggle('checked'); updateScore(); }
+
+function updateScore() {
+  const items   = document.querySelectorAll('#checklist .chk-item');
+  let checked   = 0;
+  items.forEach(i => { if (i.classList.contains('checked')) checked++; });
+  const fill    = document.getElementById('score-fill');
+  const num     = document.getElementById('score-num');
+  const verdict = document.getElementById('score-verdict');
+  fill.style.width = Math.round(checked / items.length * 100) + '%';
+  num.textContent  = checked + ' / ' + items.length;
+
+  const all  = [...items];
+  const p1   = [0,1,2].every(i => all[i].classList.contains('checked'));
+  const p2   = [3,4,5].some(i  => all[i].classList.contains('checked'));
+  const p3   = [6,7,8,9,10,11].some(i => all[i].classList.contains('checked'));
+  const p4   = [12,13,14,15].every(i  => all[i].classList.contains('checked'));
+
+  if (checked >= 12 && p1 && p2 && p3 && p4) {
+    fill.style.background = 'var(--green2)';
+    num.style.color       = 'var(--green)';
+    verdict.style.color   = 'var(--green)';
+    verdict.textContent   = 'Take the trade. All gates passed.';
+  } else if (checked >= 10 && p1 && p2 && p3) {
+    fill.style.background = 'var(--amber2)';
+    num.style.color       = 'var(--amber)';
+    verdict.style.color   = 'var(--amber)';
+    verdict.textContent   = 'Marginal setup. Reduce position size to 0.5%.';
+  } else {
+    fill.style.background = 'var(--red2)';
+    num.style.color       = 'var(--text3)';
+    verdict.style.color   = 'var(--red)';
+    const missing = [];
+    if (!p1) missing.push('Location (Phase 1)');
+    if (!p2) missing.push('Stop hunt (Phase 2)');
+    if (!p3) missing.push('Pattern (Phase 3)');
+    if (!p4) missing.push('Risk filter (Phase 4)');
+    verdict.textContent = 'Skip. Missing: ' + (missing.length ? missing.join(', ') : 'score too low') + '.';
+  }
+}
+
+function resetChecklist() {
+  document.querySelectorAll('#checklist .chk-item').forEach(i => i.classList.remove('checked'));
+  const fill = document.getElementById('score-fill');
+  fill.style.width = '0%'; fill.style.background = 'var(--red2)';
+  document.getElementById('score-num').style.color = 'var(--text3)';
+  document.getElementById('score-num').textContent = '0 / 16';
+  document.getElementById('score-verdict').style.color = 'var(--text3)';
+  document.getElementById('score-verdict').textContent = 'Check items above to evaluate the setup.';
+}
+
+// ── LIVE TRADE LOGGER ────────────────────────────────
+async function addTrade() {
+  const inst  = document.getElementById('l-inst').value;
+  const entry = parseFloat(document.getElementById('l-entry').value);
+  if (!inst || !entry) {
+    showMsg('l-msg', 'Please fill at least instrument and entry.', 'var(--red)');
+    return;
+  }
+  const trade = {
+    id:      Date.now(),
+    mode:    'live',
+    date:    document.getElementById('l-date').value || today(),
+    inst,
+    dir:     document.getElementById('l-dir').value,
+    entry,
+    sl:      parseFloat(document.getElementById('l-sl').value) || null,
+    tp:      parseFloat(document.getElementById('l-tp').value) || null,
+    pat:     document.getElementById('l-pat').value,
+    hunt:    document.getElementById('l-hunt').value,
+    out:     document.getElementById('l-out').value,
+    score:   parseInt(document.getElementById('l-score').value) || null,
+    rr:      parseFloat(document.getElementById('l-rr').value) || null,
+    session: document.getElementById('l-session').value,
+    notes:   document.getElementById('l-notes').value,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    syncStatus: hasBackendConfig() ? 'pending' : 'local'
+  };
+  trades.unshift(trade);
+  saveTrades();
+  showMsg('l-msg', hasBackendConfig() ? 'Trade saved locally. Syncing...' : 'Trade saved locally.', 'var(--green)');
+  ['l-entry','l-sl','l-tp','l-score','l-rr','l-notes'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  updateDashboard();
+  updateSidebar();
+
+  if (!hasBackendConfig()) return;
+
+  try {
+    const result = await syncLiveTrade(trade);
+    trade.syncStatus = 'synced';
+    trade.syncedAt = result.syncedAt || new Date().toISOString();
+    if (result.screenshotUrl) trade.screenshot = result.screenshotUrl;
+    saveTrades();
+    showMsg('l-msg', 'Trade synced to Google Sheets.', 'var(--green)');
+  } catch (error) {
+    trade.syncStatus = 'failed';
+    trade.syncError = error.message;
+    saveTrades();
+    showMsg('l-msg', 'Trade saved locally. Sync failed.', 'var(--amber)');
+  }
+}
+
+function deleteLiveTrade(i) {
+  if (!confirm('Delete this trade?')) return;
+  trades.splice(i, 1);
+  saveTrades();
+  renderLiveHistory();
+  updateDashboard();
+  updateSidebar();
+}
+
+function renderLiveHistory() {
+  const el = document.getElementById('live-history-body');
+  if (!el) return;
+  if (!trades.length) {
+    el.innerHTML = '<div class="perf-empty">No live trades logged yet.</div>';
+    const sc = document.getElementById('live-stats-card');
+    if (sc) sc.style.display = 'none';
+    return;
+  }
+  const sc = document.getElementById('live-stats-card');
+  if (sc) sc.style.display = 'block';
+
+  let html = `<table class="data-table"><thead><tr>
+    <th>Date</th><th>Pair</th><th>Dir</th><th>Entry</th><th>Pattern</th><th>Hunt</th><th>Score</th><th>R:R</th><th>Outcome</th><th>Notes</th><th></th>
+  </tr></thead><tbody>`;
+  trades.forEach((t, i) => {
+    const oc = t.out.startsWith('Win') ? 'var(--green)' : t.out === 'Loss' ? 'var(--red)' : 'var(--amber)';
+    const sc2 = t.score >= 12 ? 'var(--green)' : t.score >= 10 ? 'var(--amber)' : 'var(--red)';
+    html += `<tr>
+      <td class="mono" style="color:var(--text3)">${t.date}</td>
+      <td style="font-weight:500;color:var(--amber)">${t.inst}</td>
+      <td><span class="tag ${t.dir==='Long'?'tg':'tr'}">${t.dir}</span></td>
+      <td class="mono">${t.entry||'—'}</td>
+      <td style="font-size:11px">${t.pat||'—'}</td>
+      <td style="font-size:11px">${t.hunt||'—'}</td>
+      <td class="mono" style="color:${sc2}">${t.score?t.score+'/16':'—'}</td>
+      <td class="mono" style="color:var(--amber)">${t.rr?'1:'+t.rr:'—'}</td>
+      <td style="color:${oc};font-weight:500;font-size:12px">${t.out}</td>
+      <td style="font-size:11px;color:var(--text3);max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.notes||'—'}</td>
+      <td><button class="btn btn-sm btn-danger" onclick="deleteLiveTrade(${i})">×</button></td>
+    </tr>`;
+  });
+  html += '</tbody></table>';
+  el.innerHTML = html;
+  renderLiveStats();
+}
+
+function renderLiveStats() {
+  const el = document.getElementById('live-perf-metrics');
+  if (!el || !trades.length) return;
+  const wins  = trades.filter(t => t.out.startsWith('Win') || t.out === 'Break-even');
+  const wr    = Math.round(wins.length / trades.length * 100);
+  const vrr   = trades.filter(t => t.rr);
+  const avgRR = vrr.length ? vrr.reduce((a,t) => a+t.rr,0)/vrr.length : 0;
+  const totalR = trades.reduce((a,t) => {
+    if (t.out.startsWith('Win')) return a+(t.rr||0);
+    if (t.out==='Loss') return a-1;
+    if (t.out==='Partial') return a+((t.rr||0)*0.5);
+    return a;
+  }, 0);
+  el.innerHTML = `
+    <div class="metric"><div class="metric-label">Live trades</div><div class="metric-val">${trades.length}</div></div>
+    <div class="metric"><div class="metric-label">Win rate</div><div class="metric-val ${wr>=65?'pos':wr>=40?'warn':'neg'}">${wr}%</div></div>
+    <div class="metric"><div class="metric-label">Avg R:R</div><div class="metric-val warn">1:${avgRR.toFixed(1)}</div></div>
+    <div class="metric"><div class="metric-label">Net R</div><div class="metric-val ${totalR>=0?'pos':'neg'}">${totalR>=0?'+':''}${totalR.toFixed(1)}R</div></div>
+  `;
+}
+
+function exportCSV() {
+  if (!trades.length) { alert('No trades to export.'); return; }
+  const h    = ['Date','Instrument','Direction','Entry','SL','TP','Pattern','Hunt','Outcome','Score','RR','Session','Notes'];
+  const rows = trades.map(t => [t.date,t.inst,t.dir,t.entry,t.sl,t.tp,t.pat,t.hunt,t.out,t.score,t.rr,t.session,'"'+(t.notes||'').replace(/"/g,"'")+'"'].join(','));
+  download([h.join(','), ...rows].join('\n'), 'edge_live_' + today() + '.csv', 'text/csv');
+}
+
+// ── DASHBOARD ────────────────────────────────────────
+function updateDashboard() {
+  const el = document.getElementById('dm-total');
+  if (!el) return;
+  if (!trades.length) return;
+  const wins  = trades.filter(t => t.out.startsWith('Win') || t.out === 'Break-even');
+  const wr    = Math.round(wins.length / trades.length * 100);
+  const vrr   = trades.filter(t => t.rr);
+  const avgRR = vrr.length ? vrr.reduce((a,t) => a+t.rr,0)/vrr.length : 0;
+  const totalR = trades.reduce((a,t) => {
+    if (t.out.startsWith('Win')) return a+(t.rr||0);
+    if (t.out==='Loss') return a-1;
+    if (t.out==='Partial') return a+((t.rr||0)*0.5);
+    return a;
+  }, 0);
+
+  document.getElementById('dm-total').textContent = trades.length;
+  const wrEl = document.getElementById('dm-wr');
+  wrEl.textContent = wr + '%';
+  wrEl.style.color = wr >= 65 ? 'var(--green)' : wr >= 40 ? 'var(--amber)' : 'var(--red)';
+  document.getElementById('dm-rr').textContent = '1:' + avgRR.toFixed(1);
+  const trEl = document.getElementById('dm-tr');
+  trEl.textContent = (totalR >= 0 ? '+' : '') + totalR.toFixed(1) + 'R';
+  trEl.style.color = totalR >= 0 ? 'var(--green)' : 'var(--red)';
+
+  const recent = trades.slice(0, 5);
+  if (recent.length) {
+    let h = `<table class="data-table"><thead><tr><th>Date</th><th>Pair</th><th>Dir</th><th>Pattern</th><th>Score</th><th>Outcome</th></tr></thead><tbody>`;
+    recent.forEach(t => {
+      const c = t.out.startsWith('Win') ? 'var(--green)' : t.out==='Loss' ? 'var(--red)' : 'var(--amber)';
+      h += `<tr>
+        <td class="mono" style="color:var(--text3)">${t.date}</td>
+        <td style="color:var(--amber);font-weight:500">${t.inst}</td>
+        <td><span class="tag ${t.dir==='Long'?'tg':'tr'}">${t.dir}</span></td>
+        <td style="font-size:11px">${t.pat||'—'}</td>
+        <td class="mono" style="color:${t.score>=12?'var(--green)':t.score>=10?'var(--amber)':'var(--red)'}">${t.score?t.score+'/16':'—'}</td>
+        <td style="color:${c};font-weight:500;font-size:12px">${t.out}</td>
+      </tr>`;
+    });
+    h += '</tbody></table>';
+    document.getElementById('dash-recent').innerHTML = h;
+  }
+
+  // Equity curve
+  const canvas = document.getElementById('equity-chart');
+  const emptyEl = document.getElementById('equity-empty');
+  if (canvas) {
+    canvas.style.display = 'block';
+    if (emptyEl) emptyEl.style.display = 'none';
+    const sorted = [...trades].sort((a, b) => a.date.localeCompare(b.date));
+    let cum = 0;
+    const labels = ['Start'];
+    const data   = [0];
+    sorted.forEach(t => {
+      if (t.out.startsWith('Win'))   cum += (t.rr || 0);
+      else if (t.out === 'Loss')     cum -= 1;
+      else if (t.out === 'Partial')  cum += ((t.rr || 0) * 0.5);
+      labels.push(t.date.slice(5));  // MM-DD
+      data.push(parseFloat(cum.toFixed(2)));
+    });
+    const posColor = cum >= 0 ? 'rgba(74,222,128,.85)' : 'rgba(248,113,113,.85)';
+    const posFill  = cum >= 0 ? 'rgba(74,222,128,.06)' : 'rgba(248,113,113,.06)';
+    if (window._equityChart) window._equityChart.destroy();
+    window._equityChart = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [{ data, borderColor: posColor, backgroundColor: posFill,
+          fill: true, tension: 0.35, borderWidth: 2,
+          pointRadius: data.length > 25 ? 0 : 3, pointHoverRadius: 5 }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: ctx => (ctx.raw >= 0 ? '+' : '') + ctx.raw + 'R' } }
+        },
+        scales: {
+          x: { grid: { color: 'rgba(255,255,255,.04)' },
+               ticks: { color: 'rgba(255,255,255,.3)', font: { family: 'Space Mono', size: 9 },
+                        maxTicksLimit: 8 }},
+          y: { grid: { color: 'rgba(255,255,255,.04)' },
+               ticks: { color: 'rgba(255,255,255,.35)', font: { family: 'Space Mono', size: 9 },
+                        callback: v => (v >= 0 ? '+' : '') + v + 'R' }}
+        }
+      }
+    });
+  }
+
+  // Backtest summary
+  const btEl = document.getElementById('dash-bt-summary');
+  if (btEl && backtests.length) {
+    const pairs = ['XAU/USD','BTC/USD','EUR/USD'];
+    let bh = '';
+    pairs.forEach(p => {
+      const ps   = backtests.filter(b => b.pair === p);
+      const wins = ps.filter(b => b.outcome && b.outcome.startsWith('Win'));
+      const wr2  = ps.length ? Math.round(wins.length/ps.length*100) : null;
+      bh += `<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <span style="color:var(--amber);font-family:var(--mono);font-weight:600">${p}</span>
+        <span style="color:var(--text3);font-size:11px">${ps.length} sessions</span>
+        <span style="color:${wr2===null?'var(--text3)':wr2>=65?'var(--green)':wr2>=40?'var(--amber)':'var(--red)'};font-family:var(--mono);font-weight:600">${wr2===null?'—':wr2+'%'}</span>
+      </div>`;
+    });
+    btEl.innerHTML = bh || '<div style="font-size:12px;color:var(--text3);padding:8px 0">No backtest sessions yet.</div>';
+  }
+}
+
+function updateSidebar() {
+  if (!trades.length) return;
+  const wins   = trades.filter(t => t.out.startsWith('Win'));
+  const wr     = Math.round(wins.length / trades.length * 100);
+  const totalR = trades.reduce((a,t) => {
+    if (t.out.startsWith('Win')) return a+(t.rr||0);
+    if (t.out==='Loss') return a-1;
+    if (t.out==='Partial') return a+((t.rr||0)*0.5);
+    return a;
+  }, 0);
+  const sbWr = document.getElementById('sb-wr');
+  const sbR  = document.getElementById('sb-r');
+  if (sbWr) { sbWr.textContent = wr+'%'; sbWr.style.color = wr>=65?'var(--green)':wr>=40?'var(--amber)':'var(--red)'; }
+  if (sbR)  { sbR.textContent = (totalR>=0?'+':'')+totalR.toFixed(1)+'R'; }
+}
+
+// ── BACKTEST HUB ─────────────────────────────────────
+let bhPair    = null;
+let bhSession = { setups: [], currentImage: null };
+
+function initBacktestHub() {
+  showBhSelect();
+  renderBhPairCards();
+}
+
+function renderBhPairCards() {
+  const pairs = [
+    { id: 'XAU/USD', label: 'Gold', sub: 'Stop hunt + confluence' },
+    { id: 'BTC/USD', label: 'Bitcoin', sub: 'Crypto — overlap sessions' },
+    { id: 'EUR/USD', label: 'Euro / Dollar', sub: 'FX — London & NY open' }
+  ];
+  const wrap = document.getElementById('bh-pair-cards');
+  if (!wrap) return;
+  wrap.innerHTML = pairs.map(p => {
+    const ps   = backtests.filter(b => b.pair === p.id);
+    const wins = ps.filter(b => b.outcome && b.outcome.startsWith('Win'));
+    const wr   = ps.length ? Math.round(wins.length/ps.length*100)+'%' : '—';
+    const vrr  = ps.filter(b => b.aiScore);
+    const acc  = vrr.length ? Math.round(vrr.filter(b => {
+      const aiV  = b.aiScore >= 12 ? 'valid' : 'invalid';
+      const outV = b.outcome && b.outcome !== 'Loss' ? 'valid' : 'invalid';
+      return aiV === outV;
+    }).length / vrr.length * 100)+'%' : '—';
+    return `<div class="pair-card" onclick="startBhSession('${p.id}')">
+      <div class="pair-card-icon">${p.label.toUpperCase()}</div>
+      <div class="pair-card-name">${p.id}</div>
+      <div class="pair-card-sub">${p.sub}</div>
+      <div class="pair-card-stats">
+        <div class="pcs"><div class="pcs-label">Sessions</div><div class="pcs-val">${ps.length}</div></div>
+        <div class="pcs"><div class="pcs-label">Win rate</div><div class="pcs-val" style="color:${ps.length&&wins.length/ps.length>=0.65?'var(--green)':'var(--text)'}">${wr}</div></div>
+        <div class="pcs"><div class="pcs-label">AI Acc.</div><div class="pcs-val" style="color:var(--blue)">${acc}</div></div>
+      </div>
+      <button class="btn btn-sm" style="width:100%;justify-content:center">Start session →</button>
+    </div>`;
+  }).join('');
+}
+
+function startBhSession(pair) {
+  bhPair = pair;
+  bhSession = { setups: [], currentImage: null };
+  document.getElementById('bh-pair-title').textContent = pair + ' — Backtest Session';
+  document.getElementById('bh-session-count').textContent = '0';
+  document.getElementById('bh-session-wr').textContent = '—';
+  resetBhForm();
+  showBhSession();
+  renderAiPanel('backtest');
+}
+
+function showBhSelect()   { document.getElementById('bh-select').style.display='block'; document.getElementById('bh-session').style.display='none'; }
+function showBhSession()  { document.getElementById('bh-select').style.display='none'; document.getElementById('bh-session').style.display='block'; }
+
+function resetBhForm() {
+  document.getElementById('bh-user-score').value  = '';
+  document.getElementById('bh-user-verdict').value = 'valid';
+  document.getElementById('bh-outcome').value      = 'Win (TP2)';
+  document.getElementById('bh-notes').value        = '';
+  document.getElementById('bh-preview').innerHTML  = `<div class="upload-icon">📷</div><div class="upload-label">Drop chart screenshot here</div><div class="upload-hint">or click to browse · PNG, JPG, WEBP</div>`;
+  bhSession.currentImage = null;
+  hideBhVerdicts();
+}
+
+function hideBhVerdicts() {
+  ['bh-verdict-go','bh-verdict-stop','bh-verdict-marginal'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.classList.remove('show'); }
+  });
+}
+
+async function saveBhSetup() {
+  const userScore   = parseInt(document.getElementById('bh-user-score').value) || 0;
+  const userVerdict = document.getElementById('bh-user-verdict').value;
+  const outcome     = document.getElementById('bh-outcome').value;
+  const notes       = document.getElementById('bh-notes').value;
+
+  const setup = {
+    id:          Date.now(),
+    pair:        bhPair,
+    date:        today(),
+    userScore,
+    userVerdict,
+    outcome,
+    notes,
+    screenshot:  bhSession.currentImage,
+    aiScore:     null,
+    aiVerdict:   null,
+    aiNotes:     null,
+    createdAt:   new Date().toISOString(),
+    updatedAt:   new Date().toISOString(),
+    syncStatus:  hasBackendConfig() ? 'pending' : 'local'
+  };
+
+  backtests.unshift(setup);
+  bhSession.setups.unshift(setup);
+  saveBacktests();
+
+  // Update session strip
+  const wins = bhSession.setups.filter(s => s.outcome && s.outcome.startsWith('Win'));
+  document.getElementById('bh-session-count').textContent = bhSession.setups.length;
+  document.getElementById('bh-session-wr').textContent = bhSession.setups.length ? Math.round(wins.length/bhSession.setups.length*100)+'%' : '—';
+
+  showMsg('bh-msg', hasBackendConfig() ? 'Setup saved locally. Syncing...' : 'Setup saved locally.', 'var(--green)');
+  setTimeout(() => resetBhForm(), 1500);
+
+  // Refresh pair cards in background
+  renderBhPairCards();
+
+  if (!hasBackendConfig()) return;
+
+  try {
+    const result = await syncBacktestSetup(setup);
+    setup.syncStatus = 'synced';
+    setup.syncedAt = result.syncedAt || new Date().toISOString();
+    if (result.screenshotUrl) setup.screenshot = result.screenshotUrl;
+    saveBacktests();
+    showMsg('bh-msg', 'Setup synced to Google Drive/Sheets.', 'var(--green)');
+  } catch (error) {
+    setup.syncStatus = 'failed';
+    setup.syncError = error.message;
+    saveBacktests();
+    showMsg('bh-msg', 'Setup saved locally. Sync failed.', 'var(--amber)');
+  }
+}
+
+function endBhSession() {
+  if (bhSession.setups.length && !confirm('End session? ' + bhSession.setups.length + ' setups saved.')) return;
+  showBhSelect();
+  renderBhPairCards();
+  bhPair = null;
+}
+
+// Screenshot upload — Backtest Hub
+function initBhUpload() {
+  const zone  = document.getElementById('bh-upload-zone');
+  const input = document.getElementById('bh-file-input');
+  if (!zone || !input) return;
+  zone.addEventListener('click', () => input.click());
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); handleBhFile(e.dataTransfer.files[0]); });
+  input.addEventListener('change', () => handleBhFile(input.files[0]));
+}
+
+function handleBhFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    bhSession.currentImage = e.target.result;
+    document.getElementById('bh-preview').innerHTML = `<img src="${e.target.result}" alt="chart">`;
+    if (settings.groqKey) {
+      appendAiMsg('ai', 'Chart uploaded. Give me your verdict first — is this a valid EDGE setup? Score it /16 and select Valid / Invalid / Marginal above, then I\'ll share my analysis.');
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+// Screenshot upload — Trade Now
+function initTnUpload() {
+  const zone  = document.getElementById('tn-upload-zone');
+  const input = document.getElementById('tn-file-input');
+  if (!zone || !input) return;
+  zone.addEventListener('click', () => input.click());
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); handleTnFile(e.dataTransfer.files[0]); });
+  input.addEventListener('change', () => handleTnFile(input.files[0]));
+}
+
+function handleTnFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('tn-preview').innerHTML = `<img src="${e.target.result}" alt="chart" style="max-width:100%;border-radius:6px">`;
+    document.getElementById('tn-analyze-btn').disabled = false;
+    document.getElementById('tn-image-data').value = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ── AI PANEL ─────────────────────────────────────────
+function renderAiPanel(mode) {
+  const panel = document.getElementById('ai-panel');
+  if (!panel) return;
+  const dot   = panel.querySelector('.ai-dot');
+  const modeEl = panel.querySelector('.ai-panel-mode');
+  const msgs  = document.getElementById('ai-messages');
+  const status = document.getElementById('ai-status');
+  const inputWrap = document.getElementById('ai-input-wrap');
+
+  if (dot)    dot.className = 'ai-dot' + (settings.groqKey ? ' active' : '');
+  if (modeEl) modeEl.textContent = mode === 'backtest' ? 'BACKTEST COACH' : 'PRE-TRADE CHECKER';
+
+  if (msgs) msgs.innerHTML = '';
+
+  if (!settings.groqKey) {
+    if (status) status.innerHTML = 'AI inactive. <a href="#" onclick="nav(\'settings\',null);return false">Add Groq API key in Settings</a> to activate.';
+    if (inputWrap) inputWrap.style.display = 'none';
+    appendAiMsg('ai', mode === 'backtest'
+      ? 'Hi! I\'m your backtest coach. Once you add a Groq API key in Settings, I\'ll evaluate each setup against the full 16-point EDGE checklist and help you build pattern recognition. Upload a chart screenshot to begin.'
+      : 'Hi! I\'m your pre-trade checker. Add a Groq API key in Settings to activate live AI analysis. I\'ll block any trade that fails a checklist gate.');
+    return;
+  }
+
+  if (status) status.innerHTML = '';
+  if (inputWrap) inputWrap.style.display = 'flex';
+  appendAiMsg('ai', mode === 'backtest'
+    ? 'Ready. Upload a chart screenshot, give me your verdict first, then I\'ll run the full EDGE checklist analysis.'
+    : 'Ready. Upload your live chart screenshot, select the pair and direction, then hit Analyze. I\'ll run the full 16-point checklist and give you a GO or STOP verdict.');
+}
+
+function appendAiMsg(from, text) {
+  const msgs = document.getElementById('ai-messages');
+  if (!msgs) return;
+  const isAi = from === 'ai';
+  const div  = document.createElement('div');
+  div.className = 'ai-msg' + (isAi ? '' : ' user');
+  div.innerHTML = `
+    <div class="ai-avatar">${isAi ? 'AI' : 'ME'}</div>
+    <div class="ai-bubble">${text}</div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function sendAiMsg() {
+  const input = document.getElementById('ai-chat-input');
+  if (!input || !input.value.trim()) return;
+  const msg = input.value.trim();
+  input.value = '';
+  appendAiMsg('user', msg);
+  if (!settings.groqKey) {
+    appendAiMsg('ai', 'API key not set. Go to Settings to add your Groq API key.');
+    return;
+  }
+  callGroq([{ role: 'user', content: msg }], reply => appendAiMsg('ai', reply));
+}
+
+// ── TRADE NOW AI CHECK ────────────────────────────────
+function runTnAnalysis() {
+  const pair    = document.getElementById('tn-pair').value;
+  const session = document.getElementById('tn-session').value;
+  const dir     = document.getElementById('tn-dir').value;
+  const imgData = document.getElementById('tn-image-data').value;
+  const banner  = document.getElementById('tn-verdict-banner');
+
+  if (!imgData) { alert('Please upload a chart screenshot first.'); return; }
+
+  const btn = document.getElementById('tn-analyze-btn');
+  btn.textContent = 'Analyzing...';
+  btn.disabled = true;
+
+  if (!settings.groqKey) {
+    setTimeout(() => {
+      btn.textContent = 'Analyze Chart';
+      btn.disabled = false;
+      banner.className = 'verdict-banner marginal show';
+      banner.innerHTML = `<div class="verdict-icon">⚙</div><div><div>AI not active — no Groq API key set</div><div class="verdict-detail">Go to Settings and enter your Groq API key to enable AI analysis.</div></div>`;
+    }, 400);
+    return;
+  }
+
+  const prompt = `You are EDGE, a strict trading rules enforcer for the Stop Hunt + Pattern Confluence strategy.
+
+Instrument: ${pair} | Session: ${session} | Direction considered: ${dir}
+
+Evaluate this chart against the 16-point EDGE checklist. Be strict. Respond in this exact JSON format:
+{
+  "score": <0-16>,
+  "p1_pass": <true/false>,
+  "p2_pass": <true/false>,
+  "p3_pass": <true/false>,
+  "p4_pass": <true/false>,
+  "verdict": "GO" | "STOP" | "MARGINAL",
+  "reason": "<one sentence>",
+  "sl_suggestion": "<price or pip level>",
+  "rr_estimate": "<e.g. 1:2.8>",
+  "details": "<2-3 sentences of key observations>"
+}`;
+
+  callGroqVision(prompt, imgData, result => {
+    btn.textContent = 'Analyze Chart';
+    btn.disabled = false;
+    try {
+      const json  = JSON.parse(result.match(/\{[\s\S]*\}/)[0]);
+      const vtype = json.verdict === 'GO' ? 'go' : json.verdict === 'STOP' ? 'stop' : 'marginal';
+      const icons = { go: '✅', stop: '🚫', marginal: '⚠️' };
+      banner.className = `verdict-banner ${vtype} show`;
+      banner.innerHTML = `
+        <div class="verdict-icon">${icons[vtype]}</div>
+        <div>
+          <div>${json.verdict} — Score ${json.score}/16 · ${json.reason}</div>
+          <div class="verdict-detail">SL: ${json.sl_suggestion} · R:R est. ${json.rr_estimate} · P1:${json.p1_pass?'✓':'✗'} P2:${json.p2_pass?'✓':'✗'} P3:${json.p3_pass?'✓':'✗'} P4:${json.p4_pass?'✓':'✗'}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:6px">${json.details}</div>
+        </div>`;
+      // Show push-to-log button
+      document.getElementById('tn-push-btn').style.display = 'inline-flex';
+      document.getElementById('tn-push-btn').dataset.score = json.score;
+    } catch {
+      banner.className = 'verdict-banner marginal show';
+      banner.innerHTML = `<div class="verdict-icon">⚠️</div><div><div>Could not parse AI response.</div><div class="verdict-detail">${result.slice(0,200)}</div></div>`;
+    }
+  });
+}
+
+function pushTnToLog() {
+  const pair    = document.getElementById('tn-pair').value;
+  const dir     = document.getElementById('tn-dir').value;
+  const score   = document.getElementById('tn-push-btn').dataset.score;
+  // Pre-fill the log form and navigate
+  document.getElementById('l-inst').value  = pair;
+  document.getElementById('l-dir').value   = dir;
+  document.getElementById('l-score').value = score || '';
+  nav('logger', document.querySelector('[onclick*="logger"]'));
+}
+
+// ── PAIR PERFORMANCE PAGES ───────────────────────────
+function renderPairPerf(pair, containerId) {
+  const el  = document.getElementById(containerId);
+  if (!el) return;
+  const ps  = backtests.filter(b => b.pair === pair);
+  if (!ps.length) {
+    el.innerHTML = `<div class="perf-empty">No backtest sessions for ${pair} yet.<span>Start a session in Backtest Hub to populate this page.</span></div>`;
+    return;
+  }
+
+  const wins  = ps.filter(b => b.outcome && b.outcome.startsWith('Win'));
+  const wr    = Math.round(wins.length / ps.length * 100);
+  const totalR = ps.reduce((a,b) => {
+    if (!b.outcome) return a;
+    if (b.outcome.startsWith('Win')) return a + (b.aiScore ? b.aiScore/16*3 : 2);
+    if (b.outcome === 'Loss') return a-1;
+    return a+0.5;
+  }, 0);
+  const aiAcc = ps.filter(b => b.aiScore).length ? Math.round(ps.filter(b => {
+    const av = b.aiScore >= 12 ? 'valid' : 'invalid';
+    const ov = b.outcome && b.outcome !== 'Loss' ? 'valid' : 'invalid';
+    return av === ov;
+  }).length / ps.filter(b => b.aiScore).length * 100) : null;
+
+  const sorted = [...ps].sort((a, b) => a.date.localeCompare(b.date));
+  const chartId = containerId + '-chart';
+
+  el.innerHTML = `
+    <div class="metrics" style="margin-bottom:16px">
+      <div class="metric"><div class="metric-label">Sessions</div><div class="metric-val">${ps.length}</div></div>
+      <div class="metric"><div class="metric-label">Win rate</div><div class="metric-val ${wr>=65?'pos':wr>=40?'warn':'neg'}">${wr}%</div></div>
+      <div class="metric"><div class="metric-label">Est. net R</div><div class="metric-val ${totalR>=0?'pos':'neg'}">${totalR>=0?'+':''}${totalR.toFixed(1)}R</div></div>
+      <div class="metric"><div class="metric-label">AI accuracy</div><div class="metric-val" style="color:var(--blue)">${aiAcc !== null ? aiAcc+'%' : '—'}</div></div>
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">Score trend <span style="font-size:11px;font-weight:400;color:var(--text3);font-family:var(--mono)">your score vs AI score (/16)</span></div>
+      <canvas id="${chartId}" height="150"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-title">Session log</div>
+      <div class="session-row session-row-head">
+        <span>Date</span><span>Your score</span><span>AI score</span><span>Verdict</span><span>Outcome</span><span>Your read</span><span>Notes</span>
+      </div>
+      ${ps.map(b => {
+        const oc = !b.outcome ? 'var(--text3)' : b.outcome.startsWith('Win') ? 'var(--green)' : b.outcome==='Loss' ? 'var(--red)' : 'var(--amber)';
+        return `<div class="session-row">
+          <span class="mono" style="color:var(--text3)">${b.date}</span>
+          <span class="mono" style="color:${b.userScore>=12?'var(--green)':b.userScore>=10?'var(--amber)':'var(--red)'}">${b.userScore||'—'}/16</span>
+          <span class="mono" style="color:var(--blue)">${b.aiScore?b.aiScore+'/16':'—'}</span>
+          <span><span class="tag ${b.userVerdict==='valid'?'tg':b.userVerdict==='marginal'?'tw':'tr'}">${b.userVerdict||'—'}</span></span>
+          <span style="color:${oc};font-weight:500;font-size:12px">${b.outcome||'—'}</span>
+          <span class="tag ${b.userVerdict==='valid'?'tg':'tr'}">${b.userVerdict||'—'}</span>
+          <span style="font-size:11px;color:var(--text3)">${b.notes||'—'}</span>
+        </div>`;
+      }).join('')}
+    </div>`;
+
+  // Render score trend chart
+  const scoreCanvas = document.getElementById(chartId);
+  if (scoreCanvas && typeof Chart !== 'undefined') {
+    const labels    = sorted.map(b => b.date.slice(5));
+    const userScores = sorted.map(b => b.userScore || 0);
+    const aiScores   = sorted.map(b => b.aiScore   || null);
+    const chartKey   = '_perfChart_' + containerId;
+    if (window[chartKey]) window[chartKey].destroy();
+    window[chartKey] = new Chart(scoreCanvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'Your score', data: userScores,
+            borderColor: 'rgba(251,191,36,.8)', backgroundColor: 'rgba(251,191,36,.06)',
+            tension: 0.3, borderWidth: 2, pointRadius: 3, fill: false },
+          { label: 'AI score', data: aiScores,
+            borderColor: 'rgba(96,165,250,.8)', backgroundColor: 'rgba(96,165,250,.06)',
+            tension: 0.3, borderWidth: 2, pointRadius: 3, fill: false,
+            spanGaps: true }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { labels: { color: 'rgba(255,255,255,.5)', font: { family: 'DM Sans', size: 11 },
+                              boxWidth: 12 } },
+          tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + ctx.raw + '/16' } }
+        },
+        scales: {
+          x: { grid: { color: 'rgba(255,255,255,.04)' },
+               ticks: { color: 'rgba(255,255,255,.3)', font: { family: 'Space Mono', size: 9 },
+                        maxTicksLimit: 10 }},
+          y: { min: 0, max: 16,
+               grid: { color: 'rgba(255,255,255,.04)' },
+               ticks: { color: 'rgba(255,255,255,.35)', font: { family: 'Space Mono', size: 9 },
+                        stepSize: 4 }}
+        }
+      }
+    });
+  }
+}
+
+// ── SIMULATOR ────────────────────────────────────────
+function runSim() {
+  const bal    = parseFloat(document.getElementById('s-bal').value) || 5000;
+  const risk   = parseFloat(document.getElementById('s-risk').value) || 1;
+  const trds   = parseInt(document.getElementById('s-trades').value) || 12;
+  const wr     = parseInt(document.getElementById('s-wr').value) || 65;
+  const rr     = parseInt(document.getElementById('s-rr').value) / 10;
+
+  document.getElementById('sv-trades').textContent = trds;
+  document.getElementById('sv-wr').textContent     = wr + '%';
+  document.getElementById('sv-rr').textContent     = rr.toFixed(1);
+
+  const winRate = wr / 100;
+  const ev      = (winRate * rr) - ((1 - winRate) * 1);
+  const riskAmt = bal * (risk / 100);
+  const mProfit = ev * riskAmt * trds;
+  const mPct    = (mProfit / bal) * 100;
+  let b6 = bal, b12 = bal;
+  for (let i = 0; i < 6; i++)  b6  *= (1 + mPct/100);
+  for (let i = 0; i < 12; i++) b12 *= (1 + mPct/100);
+
+  document.getElementById('sim-metrics').innerHTML = `
+    <div class="metric"><div class="metric-label">Monthly return</div><div class="metric-val ${mPct>=0?'pos':'neg'}">${mPct.toFixed(1)}%</div></div>
+    <div class="metric"><div class="metric-label">Monthly profit</div><div class="metric-val ${mProfit>=0?'pos':'neg'}">$${Math.round(mProfit).toLocaleString()}</div></div>
+    <div class="metric"><div class="metric-label">After 6 months</div><div class="metric-val warn">$${Math.round(b6).toLocaleString()}</div></div>
+  `;
+
+  const beWR     = Math.round(1/(1+rr)*100);
+  const evColor  = ev>0?'rgba(74,222,128,.08)':'rgba(248,113,113,.08)';
+  const evBorder = ev>0?'rgba(74,222,128,.2)':'rgba(248,113,113,.2)';
+  const evText   = ev>0?'var(--green)':'var(--red)';
+  const evEl     = document.getElementById('ev-block');
+  evEl.style.background   = evColor;
+  evEl.style.borderColor  = evBorder;
+  evEl.innerHTML = `<div style="font-size:12px;font-family:var(--mono);color:${evText}">EV = ${ev.toFixed(2)}R &nbsp;·&nbsp; Break-even WR at ${rr.toFixed(1)}:1 = ${beWR}% &nbsp;·&nbsp; 12 months: <strong>$${Math.round(b12).toLocaleString()}</strong></div>`;
+
+  let chart = `<div style="display:grid;grid-template-columns:46px 1fr 80px;gap:8px;padding:6px 0;border-bottom:1px solid var(--border2);font-size:10px;font-family:var(--mono);color:var(--text3);text-transform:uppercase;letter-spacing:.06em"><span>Month</span><span>Balance</span><span style="text-align:right">Growth</span></div>`;
+  let b = bal;
+  for (let m = 1; m <= 12; m++) {
+    b *= (1 + mPct/100);
+    const pct = (b-bal)/bal*100;
+    const bw  = Math.min(Math.max(Math.abs(pct)/2,2),100);
+    const bc  = pct>=0?'var(--green2)':'var(--red2)';
+    chart += `<div style="display:grid;grid-template-columns:46px 1fr 80px;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);align-items:center">
+      <span class="mono" style="color:var(--text3)">M${m}</span>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1;height:6px;background:var(--bg4);border-radius:3px"><div style="width:${bw}%;height:100%;border-radius:3px;background:${bc}"></div></div>
+        <span style="font-size:12px">$${Math.round(b).toLocaleString()}</span>
+      </div>
+      <span class="mono" style="text-align:right;color:${pct>=0?'var(--green)':'var(--red)'}">${pct>=0?'+':''}${pct.toFixed(1)}%</span>
+    </div>`;
+  }
+  document.getElementById('sim-chart').innerHTML = chart;
+}
+
+// ── SETTINGS ─────────────────────────────────────────
+function loadSettings() {
+  const gk = document.getElementById('set-groq-key');
+  const su = document.getElementById('set-sheets-url');
+  const du = document.getElementById('set-drive-url');
+  settings = normalizeSettings(settings);
+  if (gk && settings.groqKey)    gk.value = settings.groqKey;
+  if (su) su.value = settings.appsScriptUrl || settings.sheetsUrl;
+  if (du) du.value = settings.appsScriptUrl || settings.driveUrl;
+}
+
+function saveSettingsForm() {
+  const gk = document.getElementById('set-groq-key');
+  const su = document.getElementById('set-sheets-url');
+  const du = document.getElementById('set-drive-url');
+  const primaryUrl = su && su.value.trim() ? su.value.trim() : (du ? du.value.trim() : '');
+  settings.groqKey   = gk ? gk.value.trim() : '';
+  settings.appsScriptUrl = primaryUrl;
+  settings.sheetsUrl = su ? su.value.trim() : '';
+  settings.driveUrl  = du ? du.value.trim() : '';
+  saveSettings();
+  showMsg('set-msg', 'Settings saved!', 'var(--green)');
+}
+
+// ── GROQ API ─────────────────────────────────────────
+function getBackendUrl() {
+  settings = normalizeSettings(settings);
+  return settings.appsScriptUrl || '';
+}
+
+function hasBackendConfig() {
+  return !!getBackendUrl();
+}
+
+function buildSyncMeta() {
+  return {
+    client: EDGE_CLIENT_NAME,
+    version: EDGE_SYNC_VERSION
+  };
+}
+
+function sanitizeImagePayload(imageData) {
+  if (!imageData || typeof imageData !== 'string') return null;
+  const match = imageData.match(/^data:(.+?);base64,/);
+  return {
+    fileName: 'edge-' + Date.now() + '.png',
+    mimeType: match ? match[1] : 'image/png',
+    dataUrl: imageData
+  };
+}
+
+function mapTradeForSync(trade) {
+  return {
+    id: String(trade.id),
+    mode: trade.mode || 'live',
+    date: trade.date || today(),
+    pair: trade.pair || trade.inst || '',
+    direction: trade.direction || trade.dir || '',
+    entry: trade.entry ?? null,
+    sl: trade.sl ?? null,
+    tp: trade.tp ?? null,
+    pattern: trade.pattern || trade.pat || '',
+    hunt: trade.hunt || '',
+    outcome: trade.outcome || trade.out || '',
+    score: trade.score ?? null,
+    rr: trade.rr ?? null,
+    session: trade.session || '',
+    notes: trade.notes || '',
+    screenshot: trade.screenshot || null,
+    aiScore: trade.aiScore ?? null,
+    aiVerdict: trade.aiVerdict || null,
+    createdAt: trade.createdAt || new Date(Number(trade.id) || Date.now()).toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function mapBacktestForSync(setup) {
+  const screenshot = setup.screenshot && typeof setup.screenshot === 'string'
+    ? sanitizeImagePayload(setup.screenshot)
+    : setup.screenshot || null;
+
+  return {
+    id: String(setup.id),
+    mode: setup.mode || 'backtest',
+    date: setup.date || today(),
+    pair: setup.pair || '',
+    userScore: setup.userScore ?? null,
+    userVerdict: setup.userVerdict || '',
+    outcome: setup.outcome || '',
+    notes: setup.notes || '',
+    aiScore: setup.aiScore ?? null,
+    aiVerdict: setup.aiVerdict || null,
+    aiNotes: setup.aiNotes || null,
+    screenshot,
+    createdAt: setup.createdAt || new Date(Number(setup.id) || Date.now()).toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+async function callEdgeBackend(action, options = {}) {
+  const baseUrl = getBackendUrl();
+  if (!baseUrl) throw new Error('Apps Script URL not set.');
+
+  const method = options.method || 'POST';
+  const url = new URL(baseUrl);
+  url.searchParams.set('action', action);
+
+  const fetchOptions = {
+    method,
+    headers: {}
+  };
+
+  if (method === 'POST') {
+    fetchOptions.headers['Content-Type'] = 'text/plain;charset=utf-8';
+    fetchOptions.body = JSON.stringify({
+      action,
+      ...buildSyncMeta(),
+      ...(options.body || {})
+    });
+  }
+
+  const res = await fetch(url.toString(), fetchOptions);
+  if (!res.ok) throw new Error('Sync request failed (' + res.status + ').');
+
+  const text = await res.text();
+  if (!text) return { ok: true };
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error('Sync response was not valid JSON.');
+  }
+}
+
+async function syncLiveTrade(trade) {
+  return callEdgeBackend('logTrade', {
+    body: { trade: mapTradeForSync(trade) }
+  });
+}
+
+async function syncBacktestSetup(setup) {
+  return callEdgeBackend('logBacktest', {
+    body: { setup: mapBacktestForSync(setup) }
+  });
+}
+
+async function fetchSyncedData() {
+  return callEdgeBackend('getTrades', { method: 'GET' });
+}
+
+async function testBackendConnection() {
+  return callEdgeBackend('health', { method: 'GET' });
+}
+
+function normalizeTradeRecord(trade) {
+  return {
+    ...trade,
+    id: trade.id,
+    inst: trade.inst || trade.pair || '',
+    dir: trade.dir || trade.direction || '',
+    pat: trade.pat || trade.pattern || '',
+    out: trade.out || trade.outcome || '',
+    pair: trade.pair || trade.inst || '',
+    direction: trade.direction || trade.dir || '',
+    pattern: trade.pattern || trade.pat || '',
+    outcome: trade.outcome || trade.out || ''
+  };
+}
+
+function normalizeBacktestRecord(setup) {
+  return {
+    ...setup,
+    mode: setup.mode || 'backtest'
+  };
+}
+
+function mergeById(localRecords, remoteRecords, normalizeFn) {
+  const merged = new Map();
+
+  localRecords.forEach(record => {
+    merged.set(String(record.id), normalizeFn(record));
+  });
+
+  remoteRecords.forEach(record => {
+    const remote = normalizeFn(record);
+    const key = String(remote.id);
+    const local = merged.get(key) || {};
+    merged.set(key, {
+      ...local,
+      ...remote,
+      syncStatus: 'synced',
+      syncedAt: remote.syncedAt || remote.updatedAt || local.syncedAt || new Date().toISOString()
+    });
+  });
+
+  return [...merged.values()].sort((a, b) => Number(b.id) - Number(a.id));
+}
+
+async function hydrateFromBackend() {
+  if (!hasBackendConfig()) return;
+
+  try {
+    const data = await fetchSyncedData();
+    const remoteTrades = Array.isArray(data.liveTrades) ? data.liveTrades : [];
+    const remoteBacktests = Array.isArray(data.backtestSessions) ? data.backtestSessions : [];
+
+    trades = mergeById(trades, remoteTrades, normalizeTradeRecord);
+    backtests = mergeById(backtests, remoteBacktests, normalizeBacktestRecord);
+
+    saveTrades();
+    saveBacktests();
+    updateDashboard();
+    updateSidebar();
+  } catch (error) {
+    console.warn('Initial sync failed:', error.message);
+  }
+}
+
+async function callGroq(messages, callback) {
+  if (!settings.groqKey) { callback('No API key set.'); return; }
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + settings.groqKey },
+      body: JSON.stringify({
+        model: 'meta-llama/llama-4-maverick-17b-128e-instruct-fp8',
+        messages: [
+          { role: 'system', content: 'You are EDGE AI, a strict trading coach for the Stop Hunt + Pattern Confluence strategy. Be concise, decisive, and always reference the 16-point checklist.' },
+          ...messages
+        ],
+        max_tokens: 600
+      })
+    });
+    const data = await res.json();
+    callback(data.choices?.[0]?.message?.content || 'No response.');
+  } catch(e) { callback('Error: ' + e.message); }
+}
+
+async function callGroqVision(prompt, imageData, callback) {
+  if (!settings.groqKey) { callback('No API key.'); return; }
+  try {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + settings.groqKey },
+      body: JSON.stringify({
+        model: 'meta-llama/llama-4-maverick-17b-128e-instruct-fp8',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: imageData } }
+          ]
+        }],
+        max_tokens: 800
+      })
+    });
+    const data = await res.json();
+    callback(data.choices?.[0]?.message?.content || 'No response.');
+  } catch(e) { callback('Error: ' + e.message); }
+}
+
+// ── UTILS ─────────────────────────────────────────────
+function today() { return new Date().toISOString().slice(0,10); }
+function showMsg(id, text, color) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text; el.style.color = color;
+  setTimeout(() => { el.textContent = ''; }, 2800);
+}
+function download(content, filename, type) {
+  const a = document.createElement('a');
+  a.href = 'data:'+type+';charset=utf-8,' + encodeURIComponent(content);
+  a.download = filename; a.click();
+}
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-'+tab));
+}
+
+// ── INIT ─────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+  const dateEl = document.getElementById('l-date');
+  if (dateEl) dateEl.value = today();
+
+  initBhUpload();
+  initTnUpload();
+  loadSettings();
+  await hydrateFromBackend();
+  updateDashboard();
+  updateSidebar();
+  runSim();
+  initBacktestHub();
+});
