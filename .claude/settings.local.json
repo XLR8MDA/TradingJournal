@@ -5,7 +5,10 @@
       "Bash(python -c ':*)",
       "Bash(pip install:*)",
       "Bash(npm install:*)",
-      "Bash(npm run:*)"
+      "Bash(npm run:*)",
+      "Bash(python -c \"import openpyxl; print\\('ok'\\)\")",
+      "Bash(python3 -c \"import openpyxl; print\\('ok'\\)\")",
+      "Bash(node import-trades.mjs)"
     ]
   }
 }
