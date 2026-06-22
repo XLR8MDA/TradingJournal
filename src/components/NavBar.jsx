@@ -12,8 +12,7 @@ export default function NavBar() {
 
       {/* Logo */}
       <div className="flex items-baseline gap-2 mr-4 select-none">
-        <span className="font-black text-xl text-brand-text" style={{ letterSpacing: '-0.03em' }}>EDGE</span>
-        <span className="text-[11px] font-bold text-brand-muted tracking-widest uppercase">Journal</span>
+        <span className="font-black text-xl text-brand-text" style={{ letterSpacing: '-0.03em' }}>CAP ✪ | Trading Community</span>
       </div>
 
       {/* Nav links */}
