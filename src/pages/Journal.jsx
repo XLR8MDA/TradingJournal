@@ -102,6 +102,15 @@ function makeDefaultForm() {
   }
 }
 
+const labelCls = 'block text-[10px] font-bold text-brand-muted uppercase tracking-[0.12em] mb-1.5'
+
+const Field = ({ label, children }) => (
+  <div>
+    <label className={labelCls}>{label}</label>
+    {children}
+  </div>
+)
+
 export default function Journal() {
   const [form, setForm]           = useState(makeDefaultForm)
   const [saving, setSaving]       = useState(false)
@@ -212,15 +221,6 @@ export default function Journal() {
   }
 
   const inputCls = 'w-full bg-white border border-brand-border rounded-lg px-3 py-2 text-sm text-brand-text placeholder-brand-muted/40 focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent/10 transition-all'
-  const labelCls = 'block text-[10px] font-bold text-brand-muted uppercase tracking-[0.12em] mb-1.5'
-
-  const Field = ({ label, children }) => (
-    <div>
-      <label className={labelCls}>{label}</label>
-      {children}
-    </div>
-  )
-
   const Chip = ({ label, active, onClick, color }) => (
     <button type="button" onClick={onClick}
       className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all duration-100 border ${
