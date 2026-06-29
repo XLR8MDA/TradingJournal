@@ -10,7 +10,7 @@ function TimeInput12({ value, onChange }) {
   function to24(hv, mv, apv) {
     const hNum = parseInt(hv, 10)
     const mNum = parseInt(mv, 10)
-    if (!hv || isNaN(hNum) || !mv || isNaN(mNum)) return ''
+    if (!hv || isNaN(hNum) || mv === '' || isNaN(mNum)) return ''
     let h24 = hNum
     if (apv === 'AM') { if (h24 === 12) h24 = 0 }
     else { if (h24 !== 12) h24 += 12 }
@@ -18,7 +18,7 @@ function TimeInput12({ value, onChange }) {
   }
 
   useEffect(() => {
-    if (value === to24(h, m, ap)) return  // already in sync, avoid loop
+    if (value === to24(h, m, ap)) return
     if (!value) { setH(''); setM(''); setAp('AM'); return }
     const [hStr, mStr] = value.split(':')
     const h24 = parseInt(hStr, 10)
@@ -27,45 +27,39 @@ function TimeInput12({ value, onChange }) {
     setAp(h24 >= 12 ? 'PM' : 'AM')
   }, [value]) // eslint-disable-line
 
-  function handleH(raw) {
-    const d = raw.replace(/\D/g, '').slice(0, 2)
-    const n = parseInt(d, 10)
-    if (d === '' || (n >= 1 && n <= 12)) { setH(d); onChange(to24(d, m, ap)) }
-  }
-
-  function handleM(raw) {
-    const d = raw.replace(/\D/g, '').slice(0, 2)
-    const n = parseInt(d, 10)
-    if (d === '' || (n >= 0 && n <= 59)) { setM(d); onChange(to24(h, d, ap)) }
-  }
-
-  function toggleAP() {
-    const newAp = ap === 'AM' ? 'PM' : 'AM'
-    setAp(newAp)
-    onChange(to24(h, m, newAp))
-  }
+  const selCls = 'bg-transparent border-0 outline-none text-sm text-brand-text cursor-pointer text-center'
 
   return (
-    <div className="flex items-center w-full bg-white border border-brand-border rounded-lg px-2 py-[7px] focus-within:border-brand-accent focus-within:ring-1 focus-within:ring-brand-accent/10 transition-all">
-      <input
-        type="text" inputMode="numeric" placeholder="hh"
-        value={h} maxLength={2}
-        onChange={e => handleH(e.target.value)}
-        className="w-6 text-center text-sm bg-transparent outline-none text-brand-text placeholder-brand-muted/40"
-      />
-      <span className="text-brand-muted/60 text-sm">:</span>
-      <input
-        type="text" inputMode="numeric" placeholder="mm"
-        value={m} maxLength={2}
-        onChange={e => handleM(e.target.value)}
-        className="w-7 text-center text-sm bg-transparent outline-none text-brand-text placeholder-brand-muted/40"
-      />
-      <button
-        type="button" onClick={toggleAP}
-        className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded bg-brand-border/40 text-brand-muted hover:bg-brand-text hover:text-white transition-all"
+    <div className="flex items-center w-full bg-white border border-brand-border rounded-lg px-1 py-[5px] focus-within:border-brand-accent focus-within:ring-1 focus-within:ring-brand-accent/10 transition-all">
+      <select
+        value={h}
+        onChange={e => { const v = e.target.value; setH(v); onChange(to24(v, m, ap)) }}
+        className={`${selCls} w-10`}
       >
-        {ap}
-      </button>
+        <option value="">hh</option>
+        {[1,2,3,4,5,6,7,8,9,10,11,12].map(n => (
+          <option key={n} value={String(n)}>{n}</option>
+        ))}
+      </select>
+      <span className="text-brand-muted/60 text-sm select-none">:</span>
+      <select
+        value={m}
+        onChange={e => { const v = e.target.value; setM(v); onChange(to24(h, v, ap)) }}
+        className={`${selCls} w-12`}
+      >
+        <option value="">mm</option>
+        {Array.from({ length: 60 }, (_, i) => String(i).padStart(2, '0')).map(mm => (
+          <option key={mm} value={mm}>{mm}</option>
+        ))}
+      </select>
+      <select
+        value={ap}
+        onChange={e => { const v = e.target.value; setAp(v); onChange(to24(h, m, v)) }}
+        className={`${selCls} w-12 ml-0.5`}
+      >
+        <option value="AM">AM</option>
+        <option value="PM">PM</option>
+      </select>
     </div>
   )
 }
