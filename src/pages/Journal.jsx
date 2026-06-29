@@ -1,9 +1,78 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../supabase'
 
+// Displays time in 12hr AM/PM format; value/onChange use 24hr "HH:MM" strings
+function TimeInput12({ value, onChange }) {
+  const [h, setH] = useState('')
+  const [m, setM] = useState('')
+  const [ap, setAp] = useState('AM')
+
+  function to24(hv, mv, apv) {
+    const hNum = parseInt(hv, 10)
+    const mNum = parseInt(mv, 10)
+    if (!hv || isNaN(hNum) || !mv || isNaN(mNum)) return ''
+    let h24 = hNum
+    if (apv === 'AM') { if (h24 === 12) h24 = 0 }
+    else { if (h24 !== 12) h24 += 12 }
+    return `${String(h24).padStart(2, '0')}:${String(mNum).padStart(2, '0')}`
+  }
+
+  useEffect(() => {
+    if (value === to24(h, m, ap)) return  // already in sync, avoid loop
+    if (!value) { setH(''); setM(''); setAp('AM'); return }
+    const [hStr, mStr] = value.split(':')
+    const h24 = parseInt(hStr, 10)
+    setH(String(h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24))
+    setM(mStr)
+    setAp(h24 >= 12 ? 'PM' : 'AM')
+  }, [value]) // eslint-disable-line
+
+  function handleH(raw) {
+    const d = raw.replace(/\D/g, '').slice(0, 2)
+    const n = parseInt(d, 10)
+    if (d === '' || (n >= 1 && n <= 12)) { setH(d); onChange(to24(d, m, ap)) }
+  }
+
+  function handleM(raw) {
+    const d = raw.replace(/\D/g, '').slice(0, 2)
+    const n = parseInt(d, 10)
+    if (d === '' || (n >= 0 && n <= 59)) { setM(d); onChange(to24(h, d, ap)) }
+  }
+
+  function toggleAP() {
+    const newAp = ap === 'AM' ? 'PM' : 'AM'
+    setAp(newAp)
+    onChange(to24(h, m, newAp))
+  }
+
+  return (
+    <div className="flex items-center w-full bg-white border border-brand-border rounded-lg px-2 py-[7px] focus-within:border-brand-accent focus-within:ring-1 focus-within:ring-brand-accent/10 transition-all">
+      <input
+        type="text" inputMode="numeric" placeholder="hh"
+        value={h} maxLength={2}
+        onChange={e => handleH(e.target.value)}
+        className="w-6 text-center text-sm bg-transparent outline-none text-brand-text placeholder-brand-muted/40"
+      />
+      <span className="text-brand-muted/60 text-sm">:</span>
+      <input
+        type="text" inputMode="numeric" placeholder="mm"
+        value={m} maxLength={2}
+        onChange={e => handleM(e.target.value)}
+        className="w-7 text-center text-sm bg-transparent outline-none text-brand-text placeholder-brand-muted/40"
+      />
+      <button
+        type="button" onClick={toggleAP}
+        className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded bg-brand-border/40 text-brand-muted hover:bg-brand-text hover:text-white transition-all"
+      >
+        {ap}
+      </button>
+    </div>
+  )
+}
+
 const DEFAULT_TICKERS = ['XAUUSD', 'BTC/USD', 'USOIL', 'NAS100', 'NQ', 'EURUSD', 'GBPUSD', 'ETH/USD']
 const TIMEFRAMES = ['15s', '30s', '1m', '2m', '3m', '5m', '15m', '30m', '1H', '4H', 'D']
-const DEFAULT_STRATEGIES = ['ILM', 'ORB', 'FCR', 'Strategy X']
+const DEFAULT_STRATEGIES = ['LSD', 'ILM', 'ORB', 'FCR', 'Strategy X']
 const SESSIONS = ['London', 'New York', 'Asian', 'Mixed']
 const SIZES = ['Full', 'Half', 'Quarter', 'Micro']
 
@@ -34,7 +103,7 @@ function makeDefaultForm() {
     entry_date: today, entry_time: '',
     exit_date: today,  exit_time: '',
     ticker: 'XAUUSD', timeframe: '5m', direction: 'Long',
-    mss: false, size: 'Full', strategy: 'ILM',
+    mss: false, size: 'Full', strategy: 'LSD',
     rating: 3, r_multiple: '', tradingview_url: '', notes: '', session: 'New York',
   }
 }
@@ -207,7 +276,7 @@ export default function Journal() {
                 <input type="date" className={inputCls} value={form.entry_date} onChange={e => set('entry_date', e.target.value)} required />
               </Field>
               <Field label="Entry Time">
-                <input type="time" className={inputCls} value={form.entry_time} onChange={e => set('entry_time', e.target.value)} />
+                <TimeInput12 value={form.entry_time} onChange={v => set('entry_time', v)} />
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-2">
@@ -215,7 +284,7 @@ export default function Journal() {
                 <input type="date" className={inputCls} value={form.exit_date} onChange={e => set('exit_date', e.target.value)} />
               </Field>
               <Field label="Exit Time">
-                <input type="time" className={inputCls} value={form.exit_time} onChange={e => set('exit_time', e.target.value)} />
+                <TimeInput12 value={form.exit_time} onChange={v => set('exit_time', v)} />
               </Field>
             </div>
 
