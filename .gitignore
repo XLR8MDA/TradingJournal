@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Vite cache
+.vite/
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# PDF statements (contain personal financial data)
+*.pdf
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
