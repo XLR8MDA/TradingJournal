@@ -156,8 +156,8 @@ function Section({ title, children }) {
   return (
     <div>
       <div className="flex items-center gap-3 mb-5">
-        <div className="w-0.5 h-5 rounded-full bg-brand-accent" />
-        <h2 className="text-[11px] font-bold text-brand-muted uppercase tracking-[0.15em]">{title}</h2>
+        <div className="w-1.5 h-6 rounded-full bg-brand-accent" />
+        <h2 className="text-sm font-black text-brand-text uppercase tracking-[0.08em]">{title}</h2>
         <div className="flex-1 h-px bg-brand-border" />
       </div>
       {children}
@@ -168,9 +168,9 @@ function Section({ title, children }) {
 function Stat({ label, value, accent, sm, hero }) {
   return (
     <div className={`
-      relative overflow-hidden rounded-xl border border-brand-border
+      relative overflow-hidden rounded-2xl border border-brand-border
       bg-gradient-to-b from-brand-surface to-brand-raised
-      p-4 transition-all duration-200
+      p-5 transition-all duration-200 shadow-sm
       hover:border-brand-accent/40 group
       ${hero ? 'ring-1 ring-brand-accent/20' : ''}
     `}>
@@ -186,7 +186,7 @@ function Stat({ label, value, accent, sm, hero }) {
 function BreakdownTable({ title, data, keyLabel }) {
   if (!data || data.length === 0) return null
   return (
-    <div className="rounded-xl border border-brand-border overflow-hidden bg-brand-surface">
+    <div className="rounded-2xl border border-brand-border overflow-hidden bg-brand-surface shadow-sm">
       <div className="px-4 py-3 border-b border-brand-border flex items-center gap-2">
         <div className="w-1 h-3 rounded-full bg-brand-accent/60" />
         <h3 className="text-[11px] font-bold text-brand-muted uppercase tracking-[0.12em]">{title}</h3>
@@ -194,20 +194,20 @@ function BreakdownTable({ title, data, keyLabel }) {
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-brand-border">
-              <th className="px-4 py-2.5 text-left text-[10px] font-semibold text-brand-muted uppercase tracking-wider">{keyLabel}</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-brand-muted uppercase tracking-wider">Trd</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-brand-muted uppercase tracking-wider">W</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-brand-muted uppercase tracking-wider">L</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-brand-muted uppercase tracking-wider">BE</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-brand-muted uppercase tracking-wider">Win%</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-brand-muted uppercase tracking-wider">Total R</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-brand-muted uppercase tracking-wider">Avg R</th>
+            <tr className="bg-brand border-b border-brand-border">
+              <th className="px-4 py-2.5 text-left text-[10px] font-black text-brand-muted uppercase tracking-widest">{keyLabel}</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Trd</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">W</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">L</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">BE</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Win%</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Total R</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Avg R</th>
             </tr>
           </thead>
           <tbody>
             {data.map((row, i) => (
-              <tr key={row.key} className={`border-t border-brand-border/40 hover:bg-brand-raised transition-colors ${i%2===1?'bg-brand-raised/30':''}`}>
+              <tr key={row.key} className={`border-t border-brand-border/40 hover:bg-brand-raised transition-colors ${i%2===0?'bg-white':'bg-brand/60'}`}>
                 <td className="px-4 py-2.5 font-semibold text-brand-accent">{row.key}</td>
                 <td className="px-3 py-2.5 text-right text-brand-text/80">{row.trades}</td>
                 <td className="px-3 py-2.5 text-right text-brand-win font-medium">{row.wins}</td>
@@ -234,7 +234,7 @@ function BreakdownTable({ title, data, keyLabel }) {
 function PeriodTable({ title, data }) {
   if (!data || data.length === 0) return null
   return (
-    <div className="rounded-xl border border-brand-border overflow-hidden bg-brand-surface">
+    <div className="rounded-2xl border border-brand-border overflow-hidden bg-brand-surface shadow-sm">
       <div className="px-4 py-3 border-b border-brand-border flex items-center gap-2">
         <div className="w-1 h-3 rounded-full bg-brand-accent/60" />
         <h3 className="text-[11px] font-bold text-brand-muted uppercase tracking-[0.12em]">{title}</h3>
@@ -242,19 +242,19 @@ function PeriodTable({ title, data }) {
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-brand-border">
-              <th className="px-4 py-2.5 text-left text-[10px] font-semibold text-brand-muted uppercase tracking-wider">Period</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-brand-muted uppercase tracking-wider">Trd</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-brand-muted uppercase tracking-wider">W</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-brand-muted uppercase tracking-wider">L</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-brand-muted uppercase tracking-wider">Win%</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-brand-muted uppercase tracking-wider">Total R</th>
-              <th className="px-3 py-2.5 text-right text-[10px] font-semibold text-brand-muted uppercase tracking-wider">Avg R</th>
+            <tr className="bg-brand border-b border-brand-border">
+              <th className="px-4 py-2.5 text-left text-[10px] font-black text-brand-muted uppercase tracking-widest">Period</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Trd</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">W</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">L</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Win%</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Total R</th>
+              <th className="px-3 py-2.5 text-right text-[10px] font-black text-brand-muted uppercase tracking-widest">Avg R</th>
             </tr>
           </thead>
           <tbody>
             {data.map((row, i) => (
-              <tr key={row.period} className={`border-t border-brand-border/40 hover:bg-brand-raised transition-colors ${i%2===1?'bg-brand-raised/30':''}`}>
+              <tr key={row.period} className={`border-t border-brand-border/40 hover:bg-brand-raised transition-colors ${i%2===0?'bg-white':'bg-brand/60'}`}>
                 <td className="px-4 py-2.5 font-medium text-brand-text">{row.period}</td>
                 <td className="px-3 py-2.5 text-right text-brand-text/80">{row.trades}</td>
                 <td className="px-3 py-2.5 text-right text-brand-win font-medium">{row.wins}</td>
@@ -410,7 +410,7 @@ export default function Dashboard() {
   )
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-8 space-y-10">
+    <div className="w-full px-8 py-8 space-y-12">
 
       {/* Header + Filters */}
       <div className="flex items-center justify-between flex-wrap gap-4">
@@ -432,7 +432,7 @@ export default function Dashboard() {
       </div>
 
       {/* Monthly R Target */}
-      <div className="relative overflow-hidden rounded-xl border border-brand-border bg-gradient-to-r from-brand-surface to-brand-raised p-5">
+      <div className="relative overflow-hidden rounded-2xl border border-brand-border bg-gradient-to-r from-brand-surface to-brand-raised p-5 shadow-sm">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand-accent/50 to-transparent" />
         <div className="flex items-center justify-between mb-3">
           <div>
@@ -453,7 +453,7 @@ export default function Dashboard() {
             <span className="text-brand-muted text-sm">R</span>
           </div>
         </div>
-        <div className="h-2.5 bg-brand rounded-full overflow-hidden">
+        <div className="h-3 bg-brand rounded-full overflow-hidden">
           <div
             className={`h-full rounded-full transition-all duration-500 ${curMonthR >= monthlyTarget ? 'bg-brand-win' : 'bg-gradient-to-r from-brand-accent to-brand-bright'}`}
             style={{ width: `${Math.max(0,targetPct)}%` }}
@@ -464,13 +464,13 @@ export default function Dashboard() {
 
       {/* Hero KPIs */}
       <Section title="Performance">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
           <Stat hero label="Net R"         value={fmtR(netR)}        accent={netR>=0?'text-brand-win':'text-brand-loss'} />
           <Stat hero label="Win Rate"      value={`${winRate.toFixed(1)}%`} accent={winRate>=60?'text-brand-win':winRate>=45?'text-brand-be':'text-brand-loss'} />
           <Stat hero label="Profit Factor" value={profitFactor ?? '—'} accent={profitFactor&&profitFactor>=1?'text-brand-win':'text-brand-loss'} />
           <Stat hero label="Expectancy"    value={fmtR(expectancy)}  accent={expectancy>=0?'text-brand-win':'text-brand-loss'} />
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
           <Stat label="Total Trades"  value={filtered.length} />
           <Stat label="Avg Win R"     value={fmtR(avgWin)}  accent="text-brand-win" sm />
           <Stat label="Avg Loss R"    value={fmtR(avgLoss)} accent="text-brand-loss" sm />
@@ -484,7 +484,7 @@ export default function Dashboard() {
 
       {/* Trade Counts */}
       <Section title="Trade Counts">
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4 mb-4">
           <Stat label="Wins"        value={wins.length}   accent="text-brand-win" sm />
           <Stat label="Losses"      value={losses.length} accent="text-brand-loss" sm />
           <Stat label="Breakevens"  value={bes.length}    accent="text-brand-be" sm />
@@ -492,14 +492,14 @@ export default function Dashboard() {
           <Stat label="Win Rate"    value={`${winRate.toFixed(1)}%`} accent={winRate>=60?'text-brand-win':winRate>=45?'text-brand-be':'text-brand-loss'} sm />
           <Stat label="Total"       value={filtered.length} sm />
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <Stat label="1R+ Trades" value={r1plus.length} sm />
           <Stat label="2R+ Trades" value={r2plus.length} sm />
           <Stat label="3R+ Trades" value={r3plus.length} sm />
           <Stat label="4R+ Trades" value={r4plus.length} sm />
           <Stat label="5R+ Trades" value={r5plus.length} sm />
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mt-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mt-4">
           <Stat label="1R Win Rate" value={withR.length ? `${(r1plus.length/withR.length*100).toFixed(1)}%` : '—'} accent="text-brand-win" sm />
           <Stat label="2R Win Rate" value={withR.length ? `${(r2plus.length/withR.length*100).toFixed(1)}%` : '—'} accent="text-brand-win" sm />
           <Stat label="3R Win Rate" value={withR.length ? `${(r3plus.length/withR.length*100).toFixed(1)}%` : '—'} accent="text-brand-win" sm />
@@ -510,7 +510,7 @@ export default function Dashboard() {
 
       {/* P&L in R */}
       <Section title="P&L in R">
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 mb-4">
           <Stat label="Max Consec. R Won"  value={fmtR(maxRWon)}  accent="text-brand-win" sm />
           <Stat label="Max Consec. R Lost" value={fmtR(minRLost)} accent="text-brand-loss" sm />
           <Stat label="Median R (All)"     value={fmtR(medAll)}   sm />
@@ -520,7 +520,7 @@ export default function Dashboard() {
           <Stat label="Mode R (Wins)"      value={fmtR(modeWin)}  accent="text-brand-win" sm />
           <Stat label="Mode R (Losses)"    value={fmtR(modeLoss)} accent="text-brand-loss" sm />
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
           <Stat label="Cum. R of 1R+" value={fmtR(cumR1)} accent="text-brand-win" sm />
           <Stat label="Cum. R of 2R+" value={fmtR(cumR2)} accent="text-brand-win" sm />
           <Stat label="Cum. R of 3R+" value={fmtR(cumR3)} accent="text-brand-win" sm />
@@ -531,7 +531,7 @@ export default function Dashboard() {
 
       {/* Streaks */}
       <Section title="Streaks">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
           <Stat label="Max Win Streak"     value={maxWinStr}      accent="text-brand-win" sm />
           <Stat label="Max Loss Streak"    value={maxLossStr}     accent="text-brand-loss" sm />
           <Stat label="Max BE Streak"      value={maxBEStr}       accent="text-brand-be" sm />
@@ -543,7 +543,7 @@ export default function Dashboard() {
 
       {/* Duration */}
       <Section title="Duration">
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 mb-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4 mb-4">
           <Stat label="Avg All"   value={fmtDur(avgDurAll)}  sm />
           <Stat label="Avg Win"   value={fmtDur(avgDurWin)}  accent="text-brand-win" sm />
           <Stat label="Avg Loss"  value={fmtDur(avgDurLoss)} accent="text-brand-loss" sm />
@@ -553,7 +553,7 @@ export default function Dashboard() {
           <Stat label="Longest Win"  value={fmtDur(longWin)}  accent="text-brand-win" sm />
           <Stat label="Longest Loss" value={fmtDur(longLoss)} accent="text-brand-loss" sm />
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           <Stat label="Avg 1R+ Duration" value={fmtDur(avgDurR(1))} sm />
           <Stat label="Avg 2R+ Duration" value={fmtDur(avgDurR(2))} sm />
           <Stat label="Avg 3R+ Duration" value={fmtDur(avgDurR(3))} sm />
@@ -563,7 +563,7 @@ export default function Dashboard() {
 
       {/* Insights */}
       <Section title="Insights">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
           <Stat label="Most Traded Ticker"  value={mostTicker ?? '—'} sm />
           <Stat label="Highest WR Ticker"   value={highWRTick ?? '—'} accent="text-brand-win" sm />
           <Stat label="Lowest WR Ticker"    value={lowWRTick  ?? '—'} accent="text-brand-loss" sm />
@@ -591,7 +591,7 @@ export default function Dashboard() {
 
       {/* Daily */}
       <Section title="Daily">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
           <Stat label="Days Traded"   value={dailyData.length}  sm />
           <Stat label="Winning Days"  value={winDays.length}   accent="text-brand-win" sm />
           <Stat label="Losing Days"   value={lossDays.length}  accent="text-brand-loss" sm />
@@ -606,7 +606,7 @@ export default function Dashboard() {
 
       {/* Weekly */}
       <Section title="Weekly">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
           <Stat label="Weeks Traded"    value={weeklyData.length}  sm />
           <Stat label="Winning Weeks"   value={winWeeks.length}   accent="text-brand-win" sm />
           <Stat label="Win Week Rate"   value={weeklyData.length ? `${(winWeeks.length/weeklyData.length*100).toFixed(0)}%` : '—'} accent="text-brand-win" sm />
@@ -620,7 +620,7 @@ export default function Dashboard() {
 
       {/* Monthly */}
       <Section title="Monthly">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
           <Stat label="Months Traded"    value={monthlyData.length}  sm />
           <Stat label="Winning Months"   value={winMonths.length}   accent="text-brand-win" sm />
           <Stat label="Win Month Rate"   value={monthlyData.length ? `${(winMonths.length/monthlyData.length*100).toFixed(0)}%` : '—'} accent="text-brand-win" sm />
@@ -635,7 +635,7 @@ export default function Dashboard() {
 
       {/* Yearly */}
       <Section title="Yearly">
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
           <Stat label="Years Traded"    value={yearlyData.length}  sm />
           <Stat label="Winning Years"   value={winYears.length}   accent="text-brand-win" sm />
           <Stat label="Win Year Rate"   value={yearlyData.length ? `${(winYears.length/yearlyData.length*100).toFixed(0)}%` : '—'} accent="text-brand-win" sm />
@@ -654,14 +654,14 @@ export default function Dashboard() {
           <p className="text-sm text-brand-muted">No trades yet.</p>
         ) : (
           <>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 mb-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 mb-6">
               {tickerBD.map(t => {
                 const active = selectedPair === t.key
                 return (
                   <button
                     key={t.key}
                     onClick={() => setSelectedPair(active ? null : t.key)}
-                    className={`text-left p-4 rounded-xl border transition-all ${
+                    className={`cursor-pointer select-none text-left p-5 rounded-2xl border transition-all shadow-sm ${
                       active
                         ? 'bg-brand-text border-brand-text text-white'
                         : 'bg-white border-brand-border hover:border-brand-text/30'
@@ -717,15 +717,15 @@ export default function Dashboard() {
               const pWeekly  = periodBreakdown(pt, x => getWeekKey(x.entry_date))
 
               return (
-                <div className="space-y-5 rounded-xl border border-brand-border bg-white p-5">
+                <div className="space-y-5 rounded-2xl border border-brand-border bg-white p-5 shadow-sm">
                   <div className="flex items-center gap-3">
                     <h3 className="text-lg font-black text-brand-text tracking-tight">{selectedPair}</h3>
                     <span className="text-xs text-brand-muted">{pt.length} trades</span>
-                    <button onClick={() => setSelectedPair(null)} className="ml-auto text-xs text-brand-muted hover:text-brand-text font-semibold transition-colors">✕ Close</button>
+                    <button onClick={() => setSelectedPair(null)} className="cursor-pointer ml-auto text-xs text-brand-muted hover:text-brand-text font-semibold transition-colors">✕ Close</button>
                   </div>
 
                   {/* Hero stats */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                     <Stat hero label="Net R"         value={fmtR(pNetR)}       accent={pNetR>=0?'text-brand-win':'text-brand-loss'} />
                     <Stat hero label="Win Rate"      value={`${pWinRate.toFixed(1)}%`} accent={pWinRate>=60?'text-brand-win':pWinRate>=45?'text-brand-be':'text-brand-loss'} />
                     <Stat hero label="Profit Factor" value={pPF ?? '—'}        accent={pPF&&pPF>=1?'text-brand-win':'text-brand-loss'} />
@@ -733,7 +733,7 @@ export default function Dashboard() {
                   </div>
 
                   {/* Secondary stats */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
                     <Stat label="Wins"        value={pWins.length}   accent="text-brand-win" sm />
                     <Stat label="Losses"      value={pLosses.length} accent="text-brand-loss" sm />
                     <Stat label="Breakevens"  value={pBEs.length}    accent="text-brand-be" sm />
@@ -745,7 +745,7 @@ export default function Dashboard() {
                   </div>
 
                   {/* R threshold win rates */}
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
                     <Stat label="1R Win Rate" value={pWithR.length ? `${(p1R.length/pWithR.length*100).toFixed(1)}%` : '—'} accent="text-brand-win" sm />
                     <Stat label="2R Win Rate" value={pWithR.length ? `${(p2R.length/pWithR.length*100).toFixed(1)}%` : '—'} accent="text-brand-win" sm />
                     <Stat label="3R Win Rate" value={pWithR.length ? `${(p3R.length/pWithR.length*100).toFixed(1)}%` : '—'} accent="text-brand-win" sm />
